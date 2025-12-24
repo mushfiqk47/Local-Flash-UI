@@ -43,17 +43,28 @@ export function useAI() {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': window.location.origin,
+        'X-Title': 'Flash UI',
       },
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: prompt }],
         temperature,
         stream: true,
-        reasoning: { enabled: true }
       })
     });
 
-    if (!response.ok) throw new Error(`OpenRouter API error: ${response.statusText}`);
+    if (!response.ok) {
+        let errorMsg = response.statusText;
+        try {
+            const errorData = await response.json();
+            if (errorData && errorData.error && errorData.error.message) {
+                errorMsg = errorData.error.message;
+            }
+        } catch (e) {
+            // Failed to parse error JSON, fall back to statusText
+        }
+        throw new Error(`OpenRouter API error: ${errorMsg}`);
+    }
     const reader = response.body?.getReader();
     if (!reader) throw new Error('No response body');
     const decoder = new TextDecoder();
