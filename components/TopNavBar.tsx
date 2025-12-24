@@ -10,6 +10,8 @@ interface TopNavBarProps {
     useTailwind: boolean;
     setUseTailwind: (b: boolean) => void;
     isLoading: boolean;
+    models: { id: string; name?: string }[];
+    refreshModels: () => void;
 }
 
 const TopNavBar: React.FC<TopNavBarProps> = ({
@@ -20,7 +22,9 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
     setModelId,
     useTailwind,
     setUseTailwind,
-    isLoading
+    isLoading,
+    models,
+    refreshModels
 }) => {
     return (
         <header className={`top-nav-bar ${hasStarted ? 'has-started' : ''}`}>
@@ -37,14 +41,37 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
                         <option value="lmstudio">LM Studio</option>
                     </select>
                     {(provider === 'openrouter' || provider === 'lmstudio') && (
-                        <input
-                            type="text"
-                            value={modelId}
-                            onChange={(e) => setModelId(e.target.value)}
-                            className="model-id-input"
-                            placeholder={provider === 'openrouter' ? "e.g., z-ai/glm-4.7" : "e.g., local-model"}
-                            disabled={isLoading}
-                        />
+                        <div className="model-input-group" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <input
+                                list="model-options"
+                                type="text"
+                                value={modelId}
+                                onChange={(e) => setModelId(e.target.value)}
+                                className="model-id-input"
+                                placeholder={provider === 'openrouter' ? "Select or type model ID..." : "Select local model..."}
+                                disabled={isLoading}
+                            />
+                            <datalist id="model-options">
+                                {models.map(m => (
+                                    <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                                ))}
+                            </datalist>
+                            {provider === 'lmstudio' && (
+                                <button 
+                                    onClick={refreshModels}
+                                    title="Refresh Local Models"
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: 'rgba(255,255,255,0.5)',
+                                        cursor: 'pointer',
+                                        padding: '4px'
+                                    }}
+                                >
+                                    ↻
+                                </button>
+                            )}
+                        </div>
                     )}
                     
                     <button 

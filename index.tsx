@@ -60,7 +60,9 @@ function App() {
       setIsLoading,
       streamContent,
       generateContent,
-      parseJsonStream
+      parseJsonStream,
+      models,
+      refreshModels
   } = useAI();
 
   const [inputValue, setInputValue] = useState<string>('');
@@ -511,6 +513,8 @@ Return ONLY RAW HTML. No markdown fences.
             useTailwind={useTailwind}
             setUseTailwind={setUseTailwind}
             isLoading={isLoading}
+            models={models}
+            refreshModels={refreshModels}
         />
 
         <SideDrawer 

@@ -24,12 +24,48 @@ export function useAI() {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [models, setModels] = useState<{id: string, name?: string}[]>([]);
 
   useEffect(() => {
     localStorage.setItem('flash-ui-provider', provider);
     localStorage.setItem('flash-ui-model-id', modelId);
     localStorage.setItem('flash-ui-use-tailwind', String(useTailwind));
   }, [provider, modelId, useTailwind]);
+
+  // --- Model Fetching ---
+  const fetchModels = async () => {
+      setModels([]);
+      try {
+          if (provider === 'lmstudio') {
+              const baseUrl = process.env.LM_STUDIO_URL || 'http://localhost:1234';
+              const res = await fetch(`${baseUrl}/v1/models`);
+              if (res.ok) {
+                  const data = await res.json();
+                  if (data.data && Array.isArray(data.data)) {
+                      setModels(data.data.map((m: any) => ({ id: m.id, name: m.id })));
+                      // Auto-select first model if current ID is default or empty
+                      if (data.data.length > 0 && (modelId === DEFAULT_MODELS.lmstudio || !modelId)) {
+                          setModelId(data.data[0].id);
+                      }
+                  }
+              }
+          } else if (provider === 'openrouter') {
+              const res = await fetch('https://openrouter.ai/api/v1/models');
+              if (res.ok) {
+                  const data = await res.json();
+                  if (data.data && Array.isArray(data.data)) {
+                      setModels(data.data.map((m: any) => ({ id: m.id, name: m.name || m.id })));
+                  }
+              }
+          }
+      } catch (e) {
+          console.warn("Failed to fetch models for", provider, e);
+      }
+  };
+
+  useEffect(() => {
+      fetchModels();
+  }, [provider]);
 
   // --- API Helpers ---
 
@@ -251,6 +287,8 @@ export function useAI() {
     setIsLoading,
     streamContent,
     generateContent,
-    parseJsonStream
+    parseJsonStream,
+    models,
+    refreshModels: fetchModels
   };
 }

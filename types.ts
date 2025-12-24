@@ -23,6 +23,11 @@ export interface LayoutOption { name: string; css: string; previewHtml: string; 
 export type AIModel = 'gemini' | 'glm-4.7' | 'local-model' | string;
 export type AIProvider = 'gemini' | 'openrouter' | 'lmstudio';
 
+export interface ModelInfo {
+  id: string;
+  name: string;
+}
+
 export interface ModelOption {
   id: AIModel;
   name: string;
