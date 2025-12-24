@@ -6,113 +6,68 @@
 //Vibe coded by ammaar@google.com
 
 import { GoogleGenAI } from '@google/genai';
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 
-import { Artifact, Session, ComponentVariation, LayoutOption, AIModel, ModelOption } from './types';
+import { Artifact, Session, ComponentVariation } from './types';
 import { INITIAL_PLACEHOLDERS } from './constants';
 import { generateId } from './utils';
 
 import DottedGlowBackground from './components/DottedGlowBackground';
-import ArtifactCard from './components/ArtifactCard';
 import SideDrawer from './components/SideDrawer';
+import TopNavBar from './components/TopNavBar';
+import PromptInput from './components/PromptInput';
+import SessionStage from './components/SessionStage';
 import {
     ThinkingIcon,
     CodeIcon,
     SparklesIcon,
-    ArrowLeftIcon,
-    ArrowRightIcon,
-    ArrowUpIcon,
     GridIcon,
-    LayoutIcon
+    LayoutIcon,
+    DownloadIcon
 } from './components/Icons';
 
-// Default models for quick selection
-const DEFAULT_MODELS = {
-  gemini: 'gemini-3-flash-preview',
-  openrouter: 'z-ai/glm-4.7'
-};
-
-// OpenRouter API helper
-async function* streamOpenRouterCompletion(prompt: string, modelId: string, temperature: number = 0.9) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured.");
-
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': window.location.origin,
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [{ role: 'user', content: prompt }],
-      temperature,
-      stream: true,
-      reasoning: { enabled: true }
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.statusText}`);
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            yield { text: content };
-          }
-        } catch (e) {
-          // Skip invalid JSON
-        }
-      }
-    }
-  }
-}
+import { useSessions } from './hooks/useSessions';
+import { useAI } from './hooks/useAI';
+import { useToast } from './hooks/useToast';
 
 function App() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [currentSessionIndex, setCurrentSessionIndex] = useState<number>(-1);
-  const [focusedArtifactIndex, setFocusedArtifactIndex] = useState<number | null>(null);
+  const { showToast, ToastComponent } = useToast();
+  
+  const { 
+      sessions, 
+      currentSessionIndex, 
+      setCurrentSessionIndex,
+      focusedArtifactIndex, 
+      setFocusedArtifactIndex, 
+      addSession, 
+      updateSessionArtifacts, 
+      updateArtifact,
+      nextItem,
+      prevItem,
+      currentSession,
+      isLoaded: isSessionsLoaded
+  } = useSessions();
+
+  const {
+      provider,
+      setProvider,
+      modelId,
+      setModelId,
+      useTailwind,
+      setUseTailwind,
+      isLoading,
+      setIsLoading,
+      streamContent,
+      generateContent,
+      parseJsonStream
+  } = useAI();
 
   const [inputValue, setInputValue] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [placeholders, setPlaceholders] = useState<string[]>(INITIAL_PLACEHOLDERS);
 
-  // Model selection state
-  const [provider, setProvider] = useState<'gemini' | 'openrouter'>(() => {
-    const saved = localStorage.getItem('flash-ui-provider');
-    return (saved === 'gemini' || saved === 'openrouter') ? saved : 'gemini';
-  });
-
-  const [modelId, setModelId] = useState<string>(() => {
-    const saved = localStorage.getItem('flash-ui-model-id');
-    return saved || DEFAULT_MODELS.openrouter;
-  });
-
-  const [drawerState, setDrawerState] = useState<{
+  const [drawerState, setDrawerState] = useState<{ 
       isOpen: boolean;
       mode: 'code' | 'variations' | null;
       title: string;
@@ -121,28 +76,7 @@ function App() {
 
   const [componentVariations, setComponentVariations] = useState<ComponentVariation[]>([]);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const gridScrollRef = useRef<HTMLDivElement>(null);
-
-  // Save model selection to localStorage
-  useEffect(() => {
-    localStorage.setItem('flash-ui-provider', provider);
-    localStorage.setItem('flash-ui-model-id', modelId);
-  }, [provider, modelId]);
-
-  useEffect(() => {
-      inputRef.current?.focus();
-  }, []);
-
-  // Fix for mobile: reset scroll when focusing an item to prevent "overscroll" state
-  useEffect(() => {
-    if (focusedArtifactIndex !== null && window.innerWidth <= 1024) {
-        if (gridScrollRef.current) {
-            gridScrollRef.current.scrollTop = 0;
-        }
-        window.scrollTo(0, 0);
-    }
-  }, [focusedArtifactIndex]);
+  const gridScrollRef = React.useRef<HTMLDivElement>(null);
 
   // Cycle placeholders
   useEffect(() => {
@@ -156,7 +90,7 @@ function App() {
   useEffect(() => {
       const fetchDynamicPlaceholders = async () => {
           try {
-              const apiKey = process.env.API_KEY;
+              const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
               if (!apiKey) return;
               const ai = new GoogleGenAI({ apiKey });
               const response = await ai.models.generateContent({
@@ -165,11 +99,11 @@ function App() {
                       role: 'user', 
                       parts: [{ 
                           text: 'Generate 20 creative, short, diverse UI component prompts (e.g. "bioluminescent task list"). Return ONLY a raw JSON array of strings. IP SAFEGUARD: Avoid referencing specific famous artists, movies, or brands.' 
-                      }] 
+                      }]
                   }
               });
               const text = response.text || '[]';
-              const jsonMatch = text.match(/\[[\s\S]*\]/);
+              const jsonMatch = text.match(/[\[\s\S]*\]/);
               if (jsonMatch) {
                   const newPlaceholders = JSON.parse(jsonMatch[0]);
                   if (Array.isArray(newPlaceholders) && newPlaceholders.length > 0) {
@@ -181,100 +115,13 @@ function App() {
               console.warn("Silently failed to fetch dynamic placeholders", e);
           }
       };
-      setTimeout(fetchDynamicPlaceholders, 1000);
-  }, []);
-
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(event.target.value);
-  };
-
-  // Universal streaming function
-  const streamContent = async function* (prompt: string, temperature: number = 0.9) {
-    if (provider === 'gemini') {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) throw new Error("API_KEY (Gemini) is not configured.");
-      const ai = new GoogleGenAI({ apiKey });
-
-      const responseStream = await ai.models.generateContentStream({
-        model: DEFAULT_MODELS.gemini,
-        contents: [{ parts: [{ text: prompt }], role: 'user' }],
-        config: { temperature }
-      });
-
-      for await (const chunk of responseStream) {
-        const text = chunk.text;
-        if (typeof text === 'string') {
-          yield { text };
-        }
+      // Only fetch if sessions are loaded to avoid lag
+      if (isSessionsLoaded) {
+          setTimeout(fetchDynamicPlaceholders, 1000);
       }
-    } else {
-      // OpenRouter with custom model ID
-      for await (const chunk of streamOpenRouterCompletion(prompt, modelId, temperature)) {
-        yield chunk;
-      }
-    }
-  };
-
-  // Universal non-streaming function (for style generation)
-  const generateContent = async (prompt: string): Promise<string> => {
-    if (provider === 'gemini') {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) throw new Error("API_KEY (Gemini) is not configured.");
-      const ai = new GoogleGenAI({ apiKey });
-
-      const response = await ai.models.generateContent({
-        model: DEFAULT_MODELS.gemini,
-        contents: { role: 'user', parts: [{ text: prompt }] }
-      });
-
-      return response.text || '[]';
-    } else {
-      // OpenRouter with custom model ID - collect all chunks
-      let fullText = '';
-      for await (const chunk of streamOpenRouterCompletion(prompt, modelId, 0.9)) {
-        fullText += chunk.text;
-      }
-      return fullText;
-    }
-  };
-
-  const parseJsonStream = async function* (responseStream: AsyncGenerator<{ text: string }>) {
-      let buffer = '';
-      for await (const chunk of responseStream) {
-          const text = chunk.text;
-          if (typeof text !== 'string') continue;
-          buffer += text;
-          let braceCount = 0;
-          let start = buffer.indexOf('{');
-          while (start !== -1) {
-              braceCount = 0;
-              let end = -1;
-              for (let i = start; i < buffer.length; i++) {
-                  if (buffer[i] === '{') braceCount++;
-                  else if (buffer[i] === '}') braceCount--;
-                  if (braceCount === 0 && i > start) {
-                      end = i;
-                      break;
-                  }
-              }
-              if (end !== -1) {
-                  const jsonString = buffer.substring(start, end + 1);
-                  try {
-                      yield JSON.parse(jsonString);
-                      buffer = buffer.substring(end + 1);
-                      start = buffer.indexOf('{');
-                  } catch (e) {
-                      start = buffer.indexOf('{', start + 1);
-                  }
-              } else {
-                  break; 
-              }
-          }
-      }
-  };
+  }, [isSessionsLoaded]);
 
   const handleGenerateVariations = useCallback(async () => {
-    const currentSession = sessions[currentSessionIndex];
     if (!currentSession || focusedArtifactIndex === null) return;
     const currentArtifact = currentSession.artifacts[focusedArtifactIndex];
 
@@ -303,7 +150,11 @@ For EACH variation:
 - Generate high-fidelity HTML/CSS.
 
 Required JSON Output Format (stream ONE object per line):
-\`{ "name": "Persona Name", "html": "..." }\`
+\
+{ 
+    "name": "Persona Name", 
+    "html": "..."
+}
         `.trim();
 
         const responseStream = streamContent(prompt, 1.2);
@@ -315,61 +166,61 @@ Required JSON Output Format (stream ONE object per line):
         }
     } catch (e: any) {
         console.error("Error generating variations:", e);
+        showToast(`Error generating variations: ${e.message}`, 'error');
     } finally {
         setIsLoading(false);
     }
-  }, [sessions, currentSessionIndex, focusedArtifactIndex]);
+  }, [sessions, currentSessionIndex, focusedArtifactIndex, streamContent, parseJsonStream, setIsLoading, showToast]);
 
   const applyVariation = (html: string) => {
-      if (focusedArtifactIndex === null) return;
-      setSessions(prev => prev.map((sess, i) => 
-          i === currentSessionIndex ? {
-              ...sess,
-              artifacts: sess.artifacts.map((art, j) => 
-                j === focusedArtifactIndex ? { ...art, html, status: 'complete' } : art
-              )
-          } : sess
-      ));
+      if (focusedArtifactIndex === null || !currentSession) return;
+      const artifactId = currentSession.artifacts[focusedArtifactIndex].id;
+      updateArtifact(currentSession.id, artifactId, { html, status: 'complete' });
       setDrawerState(s => ({ ...s, isOpen: false }));
   };
 
   const handleShowCode = () => {
-      const currentSession = sessions[currentSessionIndex];
       if (currentSession && focusedArtifactIndex !== null) {
           const artifact = currentSession.artifacts[focusedArtifactIndex];
           setDrawerState({ isOpen: true, mode: 'code', title: 'Source Code', data: artifact.html });
       }
   };
 
+  const handleDownload = () => {
+      if (currentSession && focusedArtifactIndex !== null) {
+          const artifact = currentSession.artifacts[focusedArtifactIndex];
+          const blob = new Blob([artifact.html], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `flash-ui-${artifact.styleName.replace(/\s+/g, '-').toLowerCase()}.html`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast("File downloaded successfully", "success");
+      }
+  };
+
   const handleGenerateHomepage = useCallback(async () => {
-    const currentSession = sessions[currentSessionIndex];
     if (!currentSession || focusedArtifactIndex === null) return;
     const currentArtifact = currentSession.artifacts[focusedArtifactIndex];
 
     setIsLoading(true);
-    const baseTime = Date.now();
     const sessionId = generateId();
 
-    const placeholderArtifacts: Artifact[] = [{
+    const placeholderArtifacts: Artifact[] = [{ 
         id: `${sessionId}_homepage`,
         styleName: 'Generating Full Homepage...',
         html: '',
         status: 'streaming',
     }];
 
-    const newSession: Session = {
-        id: sessionId,
-        prompt: `Full Homepage - ${currentSession.prompt}`,
-        timestamp: baseTime,
-        artifacts: placeholderArtifacts
-    };
-
-    setSessions(prev => [...prev, newSession]);
-    setCurrentSessionIndex(sessions.length);
-    setFocusedArtifactIndex(0);
+    const prompt = `Full Homepage - ${currentSession.prompt}`;
+    const newSessionId = addSession(prompt, placeholderArtifacts);
 
     try {
-        const prompt = `
+        const promptText = `
 You are a master UI/UX designer creating a complete homepage.
 
 **REFERENCE COMPONENT TO EXPAND FROM:**
@@ -410,43 +261,26 @@ Make each section as VISUALLY UNIQUE and UNEXPECTED as possible.
 Output ONLY the complete HTML with embedded CSS. No markdown formatting.
         `.trim();
 
-        const responseStream = streamContent(prompt, 0.9);
+        const responseStream = streamContent(promptText, 0.9);
 
         let accumulatedHtml = '';
         for await (const chunk of responseStream) {
             const text = chunk.text || '';
             accumulatedHtml += text;
-
             const cleanedHtml = accumulatedHtml.replace(/^```html\n?/i, '').replace(/\n?```$/i, '');
-
-            setSessions(prev => prev.map((sess, i) =>
-                i === sessions.length ? {
-                    ...sess,
-                    artifacts: [{
-                        ...sess.artifacts[0],
-                        html: cleanedHtml,
-                        status: 'streaming'
-                    }]
-                } : sess
-            ));
+            
+            updateArtifact(newSessionId, `${sessionId}_homepage`, { html: cleanedHtml, status: 'streaming' });
         }
 
-        setSessions(prev => prev.map((sess, i) =>
-            i === sessions.length ? {
-                ...sess,
-                artifacts: [{
-                    ...sess.artifacts[0],
-                    styleName: currentArtifact.styleName,
-                    status: 'complete'
-                }]
-            } : sess
-        ));
+        updateArtifact(newSessionId, `${sessionId}_homepage`, { styleName: currentArtifact.styleName, status: 'complete' });
+
     } catch (e: any) {
         console.error("Error generating homepage:", e);
+        showToast(`Error generating homepage: ${e.message}`, 'error');
     } finally {
         setIsLoading(false);
     }
-  }, [sessions, currentSessionIndex, focusedArtifactIndex]);
+  }, [sessions, currentSessionIndex, focusedArtifactIndex, addSession, updateArtifact, streamContent, setIsLoading, showToast]);
 
   const handleSendMessage = useCallback(async (manualPrompt?: string) => {
     const promptToUse = manualPrompt || inputValue;
@@ -456,29 +290,83 @@ Output ONLY the complete HTML with embedded CSS. No markdown formatting.
     if (!manualPrompt) setInputValue('');
 
     setIsLoading(true);
-    const baseTime = Date.now();
-    const sessionId = generateId();
 
-    const placeholderArtifacts: Artifact[] = Array(3).fill(null).map((_, i) => ({
-        id: `${sessionId}_${i}`,
-        styleName: 'Designing...',
-        html: '',
-        status: 'streaming',
-    }));
+    const isRefining = focusedArtifactIndex !== null && currentSession;
 
-    const newSession: Session = {
-        id: sessionId,
-        prompt: trimmedInput,
-        timestamp: baseTime,
-        artifacts: placeholderArtifacts
-    };
+    if (isRefining) {
+        const currentArtifact = currentSession!.artifacts[focusedArtifactIndex!];
+        const newArtifactId = generateId();
+        
+        updateSessionArtifacts(currentSession!.id, (prev) => [
+            ...prev,
+            {
+                id: newArtifactId,
+                styleName: `Refined: ${trimmedInput}`,
+                html: '',
+                status: 'streaming'
+            }
+        ]);
+        
+        setFocusedArtifactIndex(currentSession!.artifacts.length);
 
-    setSessions(prev => [...prev, newSession]);
-    setCurrentSessionIndex(sessions.length); 
-    setFocusedArtifactIndex(null); 
+        try {
+            const prompt = `
+You are an expert UI engineer refining a component.
 
-    try {
-        const stylePrompt = `
+**USER REQUEST:** "${trimmedInput}"
+
+**CURRENT CODE:**
+\`\`\`html
+${currentArtifact.html}
+\`\`\`
+
+**TASK:**
+Update the code to satisfy the user request while maintaining the existing design language, quality, and responsiveness.
+Return the FULLY UPDATED HTML.
+            `.trim();
+
+            const responseStream = streamContent(prompt);
+            let accumulatedHtml = '';
+
+            for await (const chunk of responseStream) {
+                const text = chunk.text;
+                if (typeof text === 'string') {
+                    accumulatedHtml += text;
+                    updateArtifact(currentSession!.id, newArtifactId, { html: accumulatedHtml });
+                }
+            }
+            
+            let finalHtml = accumulatedHtml.trim();
+            if (finalHtml.startsWith('```html')) finalHtml = finalHtml.substring(7).trimStart();
+            if (finalHtml.startsWith('```')) finalHtml = finalHtml.substring(3).trimStart();
+            if (finalHtml.endsWith('```')) finalHtml = finalHtml.substring(0, finalHtml.length - 3).trimEnd();
+
+            updateArtifact(currentSession!.id, newArtifactId, { 
+                html: finalHtml, 
+                status: finalHtml ? 'complete' : 'error' 
+            });
+
+        } catch (e: any) {
+             console.error("Error refining artifact:", e);
+             updateArtifact(currentSession!.id, newArtifactId, { status: 'error', html: `Error: ${e.message}` });
+             showToast(`Error refining: ${e.message}`, 'error');
+        } finally {
+            setIsLoading(false);
+        }
+
+    } else {
+        const sessionId = generateId(); 
+        const placeholderArtifacts: Artifact[] = Array(3).fill(null).map((_, i) => ({
+            id: `${sessionId}_${i}`,
+            styleName: 'Designing...', 
+            html: '',
+            status: 'streaming',
+        }));
+
+        const newSessionId = addSession(trimmedInput, placeholderArtifacts);
+
+        try {
+            const stylePrompt = `
 Generate 3 distinct, highly evocative design directions for: "${trimmedInput}".
 
 **STRICT IP SAFEGUARD:**
@@ -492,113 +380,100 @@ Never use artist or brand names. Use physical and material metaphors.
 
 **GOAL:**
 Return ONLY a raw JSON array of 3 *NEW*, creative names for these directions (e.g. ["Tactile Risograph Press", "Kinetic Silhouette Balance", "Primary Pigment Gridwork"]).
-        `.trim();
+            `.trim();
 
-        const styleText = await generateContent(stylePrompt);
+            const styleText = await generateContent(stylePrompt);
 
-        let generatedStyles: string[] = [];
-        const jsonMatch = styleText.match(/\[[\s\S]*\]/);
+            let generatedStyles: string[] = [];
+            const jsonMatch = styleText.match(/[\[\s\S]*\]/);
 
-        if (jsonMatch) {
-            try {
-                generatedStyles = JSON.parse(jsonMatch[0]);
-            } catch (e) {
-                console.warn("Failed to parse styles, using fallbacks");
+            if (jsonMatch) {
+                try {
+                    generatedStyles = JSON.parse(jsonMatch[0]);
+                } catch (e) {
+                    console.warn("Failed to parse styles, using fallbacks");
+                }
             }
-        }
 
-        if (!generatedStyles || generatedStyles.length < 3) {
-            generatedStyles = [
-                "Primary Pigment Gridwork",
-                "Tactile Risograph Layering",
-                "Kinetic Silhouette Balance"
-            ];
-        }
-        
-        generatedStyles = generatedStyles.slice(0, 3);
+            if (!generatedStyles || generatedStyles.length < 3) {
+                generatedStyles = [
+                    "Primary Pigment Gridwork",
+                    "Tactile Risograph Layering",
+                    "Kinetic Silhouette Balance"
+                ];
+            }
+            
+            generatedStyles = generatedStyles.slice(0, 3);
 
-        setSessions(prev => prev.map(s => {
-            if (s.id !== sessionId) return s;
-            return {
-                ...s,
-                artifacts: s.artifacts.map((art, i) => ({
+            updateSessionArtifacts(newSessionId, (artifacts) => {
+                return artifacts.map((art, i) => ({
                     ...art,
-                    styleName: generatedStyles[i]
-                }))
-            };
-        }));
+                    styleName: generatedStyles[i] || art.styleName
+                }));
+            });
 
-        const generateArtifact = async (artifact: Artifact, styleInstruction: string) => {
-            try {
-                const prompt = `
+            const generateArtifact = async (artifact: Artifact, styleInstruction: string) => {
+                try {
+                    const prompt = `
 You are Flash UI. Create a stunning, high-fidelity UI component for: "${trimmedInput}".
 
 **CONCEPTUAL DIRECTION: ${styleInstruction}**
 
 **VISUAL EXECUTION RULES:**
-1. **Materiality**: Use the specified metaphor to drive every CSS choice. (e.g. if Risograph, use \`feTurbulence\` for grain and \`mix-blend-mode: multiply\` for ink layering).
+1. **Materiality**: Use the specified metaphor to drive every CSS choice. (e.g. if Risograph, use \
+feTurbulence\
+ for grain and \
+mix-blend-mode: multiply\
+ for ink layering).
 2. **Typography**: Use high-quality web fonts. Pair a bold sans-serif with a refined monospace for data.
 3. **Motion**: Include subtle, high-performance CSS/JS animations (hover transitions, entry reveals).
 4. **IP SAFEGUARD**: No artist names or trademarks. 
 5. **Layout**: Be bold with negative space and hierarchy. Avoid generic cards.
 
 Return ONLY RAW HTML. No markdown fences.
-          `.trim();
+            `.trim();
 
-                const responseStream = streamContent(prompt);
+                    const responseStream = streamContent(prompt);
 
-                let accumulatedHtml = '';
-                for await (const chunk of responseStream) {
-                    const text = chunk.text;
-                    if (typeof text === 'string') {
-                        accumulatedHtml += text;
-                        setSessions(prev => prev.map(sess =>
-                            sess.id === sessionId ? {
-                                ...sess,
-                                artifacts: sess.artifacts.map(art =>
-                                    art.id === artifact.id ? { ...art, html: accumulatedHtml } : art
-                                )
-                            } : sess
-                        ));
+                    let accumulatedHtml = '';
+                    for await (const chunk of responseStream) {
+                        const text = chunk.text;
+                        if (typeof text === 'string') {
+                            accumulatedHtml += text;
+                            updateArtifact(newSessionId, artifact.id, { html: accumulatedHtml });
+                        }
                     }
+                    
+                    let finalHtml = accumulatedHtml.trim();
+                    if (finalHtml.startsWith('```html')) finalHtml = finalHtml.substring(7).trimStart();
+                    if (finalHtml.startsWith('```')) finalHtml = finalHtml.substring(3).trimStart();
+                    if (finalHtml.endsWith('```')) finalHtml = finalHtml.substring(0, finalHtml.length - 3).trimEnd();
+
+                    updateArtifact(newSessionId, artifact.id, { 
+                        html: finalHtml, 
+                        status: finalHtml ? 'complete' : 'error' 
+                    });
+
+                } catch (e: any) {
+                    console.error('Error generating artifact:', e);
+                    updateArtifact(newSessionId, artifact.id, { 
+                        html: `<div style="color: #ff6b6b; padding: 20px;">Error: ${e.message}</div>`, 
+                        status: 'error' 
+                    });
                 }
-                
-                let finalHtml = accumulatedHtml.trim();
-                if (finalHtml.startsWith('```html')) finalHtml = finalHtml.substring(7).trimStart();
-                if (finalHtml.startsWith('```')) finalHtml = finalHtml.substring(3).trimStart();
-                if (finalHtml.endsWith('```')) finalHtml = finalHtml.substring(0, finalHtml.length - 3).trimEnd();
+            };
 
-                setSessions(prev => prev.map(sess => 
-                    sess.id === sessionId ? {
-                        ...sess,
-                        artifacts: sess.artifacts.map(art => 
-                            art.id === artifact.id ? { ...art, html: finalHtml, status: finalHtml ? 'complete' : 'error' } : art
-                        )
-                    } : sess
-                ));
+            await Promise.all(placeholderArtifacts.map((art, i) => generateArtifact(art, generatedStyles[i])));
 
-            } catch (e: any) {
-                console.error('Error generating artifact:', e);
-                setSessions(prev => prev.map(sess => 
-                    sess.id === sessionId ? {
-                        ...sess,
-                        artifacts: sess.artifacts.map(art => 
-                            art.id === artifact.id ? { ...art, html: `<div style="color: #ff6b6b; padding: 20px;">Error: ${e.message}</div>`, status: 'error' } : art
-                        )
-                    } : sess
-                ));
-            }
-        };
-
-        await Promise.all(placeholderArtifacts.map((art, i) => generateArtifact(art, generatedStyles[i])));
-
-    } catch (e) {
-        console.error("Fatal error in generation process", e);
-    } finally {
-        setIsLoading(false);
-        setTimeout(() => inputRef.current?.focus(), 100);
+        } catch (e: any) {
+            console.error("Fatal error in generation process", e);
+            showToast(`Fatal error: ${e.message}`, 'error');
+        } finally {
+            setIsLoading(false);
+            setTimeout(() => inputRef.current?.focus(), 100);
+        }
     }
-  }, [inputValue, isLoading, sessions.length]);
+  }, [inputValue, isLoading, sessions, currentSessionIndex, focusedArtifactIndex, addSession, updateSessionArtifacts, updateArtifact, generateContent, streamContent, showToast]);
 
   const handleSurpriseMe = () => {
       const currentPrompt = placeholders[placeholderIndex];
@@ -606,40 +481,11 @@ Return ONLY RAW HTML. No markdown fences.
       handleSendMessage(currentPrompt);
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && !isLoading) {
-      event.preventDefault();
-      handleSendMessage();
-    } else if (event.key === 'Tab' && !inputValue && !isLoading) {
-        event.preventDefault();
-        setInputValue(placeholders[placeholderIndex]);
-    }
-  };
-
-  const nextItem = useCallback(() => {
-      if (focusedArtifactIndex !== null) {
-          if (focusedArtifactIndex < 2) setFocusedArtifactIndex(focusedArtifactIndex + 1);
-      } else {
-          if (currentSessionIndex < sessions.length - 1) setCurrentSessionIndex(currentSessionIndex + 1);
-      }
-  }, [currentSessionIndex, sessions.length, focusedArtifactIndex]);
-
-  const prevItem = useCallback(() => {
-      if (focusedArtifactIndex !== null) {
-          if (focusedArtifactIndex > 0) setFocusedArtifactIndex(focusedArtifactIndex - 1);
-      } else {
-           if (currentSessionIndex > 0) setCurrentSessionIndex(currentSessionIndex - 1);
-      }
-  }, [currentSessionIndex, focusedArtifactIndex]);
-
-  const isLoadingDrawer = isLoading && drawerState.mode === 'variations' && componentVariations.length === 0;
-
   const hasStarted = sessions.length > 0 || isLoading;
-  const currentSession = sessions[currentSessionIndex];
-
+  
+  // Computed navigation state
   let canGoBack = false;
   let canGoForward = false;
-
   if (hasStarted) {
       if (focusedArtifactIndex !== null) {
           canGoBack = focusedArtifactIndex > 0;
@@ -650,18 +496,29 @@ Return ONLY RAW HTML. No markdown fences.
       }
   }
 
+  // Refine mode detection for input
+  const isRefining = focusedArtifactIndex !== null;
+
   return (
     <>
-        <a href="https://x.com/ammaar" target="_blank" rel="noreferrer" className={`creator-credit ${hasStarted ? 'hide-on-mobile' : ''}`}>
-            created by @ammaar
-        </a>
+        <ToastComponent />
+        <TopNavBar 
+            hasStarted={hasStarted}
+            provider={provider}
+            setProvider={setProvider}
+            modelId={modelId}
+            setModelId={setModelId}
+            useTailwind={useTailwind}
+            setUseTailwind={setUseTailwind}
+            isLoading={isLoading}
+        />
 
         <SideDrawer 
             isOpen={drawerState.isOpen} 
             onClose={() => setDrawerState(s => ({...s, isOpen: false}))} 
             title={drawerState.title}
         >
-            {isLoadingDrawer && (
+            {drawerState.isOpen && isLoading && drawerState.mode === 'variations' && componentVariations.length === 0 && (
                  <div className="loading-state">
                      <ThinkingIcon /> 
                      Designing variations...
@@ -695,54 +552,20 @@ Return ONLY RAW HTML. No markdown fences.
                 speedScale={0.5} 
             />
 
-            <div className={`stage-container ${focusedArtifactIndex !== null ? 'mode-focus' : 'mode-split'}`}>
-                 <div className={`empty-state ${hasStarted ? 'fade-out' : ''}`}>
-                     <div className="empty-content">
-                         <h1>Flash UI</h1>
-                         <p>Creative UI generation in a flash</p>
-                         <button className="surprise-button" onClick={handleSurpriseMe} disabled={isLoading}>
-                             <SparklesIcon /> Surprise Me
-                         </button>
-                     </div>
-                 </div>
-
-                {sessions.map((session, sIndex) => {
-                    let positionClass = 'hidden';
-                    if (sIndex === currentSessionIndex) positionClass = 'active-session';
-                    else if (sIndex < currentSessionIndex) positionClass = 'past-session';
-                    else if (sIndex > currentSessionIndex) positionClass = 'future-session';
-                    
-                    return (
-                        <div key={session.id} className={`session-group ${positionClass}`}>
-                            <div className="artifact-grid" ref={sIndex === currentSessionIndex ? gridScrollRef : null}>
-                                {session.artifacts.map((artifact, aIndex) => {
-                                    const isFocused = focusedArtifactIndex === aIndex;
-                                    
-                                    return (
-                                        <ArtifactCard 
-                                            key={artifact.id}
-                                            artifact={artifact}
-                                            isFocused={isFocused}
-                                            onClick={() => setFocusedArtifactIndex(aIndex)}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-             {canGoBack && (
-                <button className="nav-handle left" onClick={prevItem} aria-label="Previous">
-                    <ArrowLeftIcon />
-                </button>
-             )}
-             {canGoForward && (
-                <button className="nav-handle right" onClick={nextItem} aria-label="Next">
-                    <ArrowRightIcon />
-                </button>
-             )}
+            <SessionStage 
+                sessions={sessions}
+                currentSessionIndex={currentSessionIndex}
+                focusedArtifactIndex={focusedArtifactIndex}
+                setFocusedArtifactIndex={setFocusedArtifactIndex}
+                isLoading={isLoading}
+                hasStarted={hasStarted}
+                handleSurpriseMe={handleSurpriseMe}
+                gridScrollRef={gridScrollRef}
+                navNext={nextItem}
+                navPrev={prevItem}
+                canGoBack={canGoBack}
+                canGoForward={canGoForward}
+            />
 
             <div className={`action-bar ${focusedArtifactIndex !== null ? 'visible' : ''}`}>
                  <div className="active-prompt-label">
@@ -761,61 +584,21 @@ Return ONLY RAW HTML. No markdown fences.
                     <button onClick={handleShowCode}>
                         <CodeIcon /> Source
                     </button>
+                    <button onClick={handleDownload} title="Download HTML">
+                        <DownloadIcon /> Download
+                    </button>
                  </div>
             </div>
 
-            <div className="model-selector-container">
-                <div className="model-controls">
-                    <select
-                        value={provider}
-                        onChange={(e) => setProvider(e.target.value as 'gemini' | 'openrouter')}
-                        className="provider-selector"
-                        disabled={isLoading}
-                    >
-                        <option value="gemini">Gemini</option>
-                        <option value="openrouter">OpenRouter</option>
-                    </select>
-                    {provider === 'openrouter' && (
-                        <input
-                            type="text"
-                            value={modelId}
-                            onChange={(e) => setModelId(e.target.value)}
-                            className="model-id-input"
-                            placeholder="e.g., z-ai/glm-4.7"
-                            disabled={isLoading}
-                        />
-                    )}
-                </div>
-            </div>
-
-            <div className="floating-input-container">
-                <div className={`input-wrapper ${isLoading ? 'loading' : ''}`}>
-                    {(!inputValue && !isLoading) && (
-                        <div className="animated-placeholder" key={placeholderIndex}>
-                            <span className="placeholder-text">{placeholders[placeholderIndex]}</span>
-                            <span className="tab-hint">Tab</span>
-                        </div>
-                    )}
-                    {!isLoading ? (
-                        <input
-                            ref={inputRef}
-                            type="text"
-                            value={inputValue}
-                            onChange={handleInputChange}
-                            onKeyDown={handleKeyDown}
-                            disabled={isLoading}
-                        />
-                    ) : (
-                        <div className="input-generating-label">
-                            <span className="generating-prompt-text">{currentSession?.prompt}</span>
-                            <ThinkingIcon />
-                        </div>
-                    )}
-                    <button className="send-button" onClick={() => handleSendMessage()} disabled={isLoading || !inputValue.trim()}>
-                        <ArrowUpIcon />
-                    </button>
-                </div>
-            </div>
+            <PromptInput 
+                inputValue={inputValue}
+                setInputValue={setInputValue}
+                isLoading={isLoading}
+                placeholders={placeholders}
+                placeholderIndex={placeholderIndex}
+                currentPrompt={isRefining ? `Refine this design...` : currentSession?.prompt}
+                onSend={handleSendMessage}
+            />
         </div>
     </>
   );
