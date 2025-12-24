@@ -21,7 +21,7 @@ export interface ComponentVariation { name: string; html: string; }
 export interface LayoutOption { name: string; css: string; previewHtml: string; }
 
 export type AIModel = 'gemini' | 'glm-4.7' | 'local-model' | string;
-export type AIProvider = 'gemini' | 'openrouter' | 'lmstudio';
+export type AIProvider = 'gemini' | 'openrouter' | 'lmstudio' | 'aiml';
 
 export interface ModelInfo {
   id: string;

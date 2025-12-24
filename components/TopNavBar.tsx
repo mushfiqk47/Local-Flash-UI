@@ -24,7 +24,8 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
     setUseTailwind,
     isLoading,
     models,
-    refreshModels
+    refreshModels,
+
 }) => {
     return (
         <header className={`top-nav-bar ${hasStarted ? 'has-started' : ''}`}>
@@ -39,8 +40,10 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
                         <option value="gemini">Gemini</option>
                         <option value="openrouter">OpenRouter</option>
                         <option value="lmstudio">LM Studio</option>
+                        <option value="aiml">AIML API</option>
                     </select>
-                    {(provider === 'openrouter' || provider === 'lmstudio') && (
+
+                    {(provider === 'openrouter' || provider === 'lmstudio' || provider === 'aiml') && (
                         <div className="model-input-group" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <input
                                 list="model-options"
@@ -57,7 +60,7 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
                                 ))}
                             </datalist>
                             {provider === 'lmstudio' && (
-                                <button 
+                                <button
                                     onClick={refreshModels}
                                     title="Refresh Local Models"
                                     style={{
@@ -73,8 +76,8 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
                             )}
                         </div>
                     )}
-                    
-                    <button 
+
+                    <button
                         className={`tailwind-toggle ${useTailwind ? 'active' : ''}`}
                         onClick={() => setUseTailwind(!useTailwind)}
                         title="Toggle Tailwind CSS"
@@ -83,7 +86,7 @@ const TopNavBar: React.FC<TopNavBarProps> = ({
                     </button>
                 </div>
             </div>
-            
+
             <div className="nav-center">
                 <h2 className="nav-logo">Flash UI</h2>
             </div>
