@@ -1,45 +1,57 @@
-# AI Design Benchmark
+# Flash UI (Local Edition)
 
-An AI-powered UI component generator that creates high-fidelity design variations in real-time using multiple AI models. Compare design outputs from different LLMs including Google Gemini and any OpenRouter-supported model.
+An advanced, AI-powered UI component generator that creates high-fidelity design variations in real-time. This version is enhanced with **Local AI support (LM Studio)**, **Session Persistence**, **Iterative Refinement**, and **Tailwind CSS generation**.
 
-![AI Design Benchmark](https://img.shields.io/badge/AI-Design%20Tool-blue) ![React](https://img.shields.io/badge/React-19.0-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6)
+![AI Design Tool](https://img.shields.io/badge/AI-Design%20Tool-blue) ![React](https://img.shields.io/badge/React-19.0-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6) ![Vite](https://img.shields.io/badge/Vite-6.0-646cff)
 
-## 🎨 Features
+## 🚀 Key Features
 
-- **Multi-Model Support**: Switch between Google Gemini and any OpenRouter model
-- **Real-time Streaming**: Watch designs generate live as the AI creates them
-- **3 Design Variations**: Get three unique design directions for every prompt
-- **Full Homepage Generation**: Expand any component into a complete 8-section homepage
-- **Variation Explorer**: Generate radical conceptual alternatives for any design
-- **Export Ready**: Copy HTML/CSS source code for production use
-- **Model Benchmarking**: Compare design quality across different AI models
+- **🤖 Multi-Model Support**:
+  - **Google Gemini**: Fast, cloud-based generation.
+  - **OpenRouter**: Access to Claude, GPT-4, Llama 3 via API.
+  - **LM Studio (Local)**: **NEW!** Run models locally on your own hardware for privacy and zero cost.
+- **💾 Session Persistence**: **NEW!** Your designs and history are automatically saved to `localStorage`. Never lose a spark of inspiration.
+- **✨ Iterative Refinement**: **NEW!** Click on any generated design to enter "Refine Mode". Chat with the AI to tweak colors, layout, or content instantly.
+- **🎨 Tailwind CSS Support**: **NEW!** Toggle between raw CSS and Tailwind utility classes for generated components.
+- **📥 One-Click Export**: **NEW!** Download any generated component as a standalone `.html` file.
+- **⚡ Real-time Streaming**: Watch designs render live as the AI generates code.
+- **📱 Responsive & Immersive**: A glassmorphic, mobile-friendly interface with 3D card effects.
 
-## 🚀 Quick Start
+## 🛠️ Quick Start
 
 ### Prerequisites
 
-- Node.js 16+ installed
-- API keys for:
+- Node.js 18+ installed
+- API keys (optional, depending on provider):
   - Google Gemini API (get from [Google AI Studio](https://makersuite.google.com/app/apikey))
   - OpenRouter API (get from [OpenRouter](https://openrouter.ai/keys))
+- [LM Studio](https://lmstudio.ai/) (for local inference)
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/AI-DESIGN-BENCHMARK.git
-cd AI-DESIGN-BENCHMARK
+git clone https://github.com/mushfiqk47/Local-Flash-UI.git
+cd Local-Flash-UI
 
 # Install dependencies
 npm install
-
-# Set up environment variables
-# Create .env.local file with:
-GEMINI_API_KEY=your_gemini_api_key_here
-OPENROUTER_API_KEY=your_openrouter_api_key_here
 ```
 
-### Run Development Server
+### Configuration
+
+Create a `.env` file in the root directory:
+
+```env
+# Cloud Providers (Optional if using Local AI)
+GEMINI_API_KEY=your_gemini_key_here
+OPENROUTER_API_KEY=your_openrouter_key_here
+
+# Local Provider (Default: http://localhost:1234)
+LM_STUDIO_URL=http://localhost:1234
+```
+
+### Running Locally
 
 ```bash
 npm run dev
@@ -47,77 +59,58 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+---
+
 ## 🎯 How to Use
 
-### 1. Select Your Model
+### 1. Choose Your Brain 🧠
+Use the **Top Nav Bar** to select your AI provider:
+- **Gemini**: Best for speed and creative layouts.
+- **OpenRouter**: Access top-tier models like Claude 3.5 Sonnet.
+- **LM Studio**: Point to your local server. Ensure LM Studio is running and the "Local Inference Server" is started.
 
-Choose between:
-- **Gemini**: Google's Gemini 3 Flash model
-- **OpenRouter**: Any model from [OpenRouter's catalog](https://openrouter.ai/models)
-  - Paste model ID (e.g., `z-ai/glm-4.7`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4`)
+### 2. Generate UI 🎨
+Type a prompt in the bottom bar (e.g., *"A cyberpunk crypto dashboard"*).
+- **Tailwind Toggle**: Switch "Tailwind ON" in the top bar to generate utility-first CSS.
 
-### 2. Generate Components
+### 3. Refine & Iterate 🛠️
+Click on any design card to focus it.
+- The input prompt changes to **"Refine this design..."**.
+- Type instructions like *"Make the background darker"* or *"Add a user profile picture"*.
+- The AI will update the code in real-time.
 
-Enter a design prompt like:
-- "A minimalist weather card"
-- "Dark mode dashboard with charts"
-- "Futuristic product card with holographic effects"
+### 4. Export 📤
+Click the **Download** button in the action bar to save your design as a production-ready HTML file.
 
-Press Enter or click "Surprise Me" for random prompts.
-
-### 3. Explore Features
-
-- **Variations**: Click to generate 3 radical design alternatives
-- **Full Homepage**: Expand any component into an 8-section landing page
-- **Source Code**: View and copy the HTML/CSS
-- **Grid View**: Compare all variations side-by-side
+---
 
 ## 🏗️ Architecture
 
+The project has been refactored for modularity and scalability:
+
 ```
 flash-ui/
-├── index.tsx              # Main React app
-├── index.html             # HTML entry point
-├── index.css              # Global styles
-├── vite.config.ts         # Vite configuration
-├── types.ts               # TypeScript interfaces
-├── constants.ts           # Placeholder prompts
-├── utils.ts               # Utility functions
-└── components/
-    ├── ArtifactCard.tsx           # Design preview cards
-    ├── SideDrawer.tsx             # Code viewer drawer
-    ├── DottedGlowBackground.tsx   # Animated background
-    └── Icons.tsx                  # SVG icon components
+├── index.tsx              # Application entry point
+├── components/            # UI Components
+│   ├── TopNavBar.tsx      # Model selector & settings
+│   ├── SessionStage.tsx   # Grid of artifact cards
+│   ├── PromptInput.tsx    # Floating input bar
+│   ├── ArtifactCard.tsx   # Individual design preview
+│   └── SideDrawer.tsx     # Code viewer & variations
+├── hooks/                 # Custom React Hooks
+│   ├── useAI.ts           # AI generation, streaming, & providers
+│   ├── useSessions.ts     # State management & localStorage persistence
+│   └── useToast.ts        # Notification system
+├── types.ts               # TypeScript definitions
+└── utils.ts               # Helper functions
 ```
-
-## 🤖 Supported Models
-
-### Google Gemini
-- **gemini-3-flash-preview**: Fast, creative UI generation
-
-### OpenRouter (Examples)
-- `z-ai/glm-4.7` - GLM-4.7 with reasoning
-- `anthropic/claude-3.5-sonnet` - Claude 3.5 Sonnet
-- `openai/gpt-4` - GPT-4
-- `meta-llama/llama-3-70b-instruct` - Llama 3 70B
-- See full list at [openrouter.ai/models](https://openrouter.ai/models)
-
-## 🎨 Design System
-
-The app uses a dark-themed design system with:
-- **Colors**: Deep blacks, subtle grays, accent highlights
-- **Typography**: Inter (sans-serif), Roboto Mono (code)
-- **Effects**: Glassmorphism, backdrop blur, subtle shadows
-- **Animations**: Smooth transitions, loading indicators
 
 ## 🔧 Tech Stack
 
-- **React 19** - UI framework
-- **TypeScript 5.8** - Type safety
-- **Vite 6** - Fast build tool
-- **Google GenAI SDK** - Gemini API integration
-- **OpenRouter API** - Multi-model access
-- **CSS3** - Custom styling (no frameworks)
+- **Frontend**: React 19, TypeScript, Vite
+- **Styling**: Custom CSS with Glassmorphism effects + Tailwind support
+- **AI Integration**: Google GenAI SDK, Fetch API (OpenRouter/LM Studio)
+- **State**: React Hooks + LocalStorage
 
 ## 📝 Scripts
 
@@ -127,31 +120,15 @@ npm run build     # Build for production
 npm run preview   # Preview production build
 ```
 
-## 🌟 Key Features Explained
+## 🤝 Contributing
 
-### Real-time Streaming
-Uses Server-Sent Events (SSE) to stream AI responses in real-time, showing progressive HTML generation as it happens.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-### IP-Safe Prompts
-All design prompts use physical/material metaphors instead of artist names to avoid copyright issues:
-- ❌ "Bauhaus style"
-- ✅ "Rectilinear grid with primary pigments"
-
-### Smart Caching
-Saves model selection and generated placeholders to localStorage for faster subsequent sessions.
-
-### Responsive Design
-Fully responsive with mobile-optimized layouts (≤1024px breakpoint).
-
-## 🚧 Development
-
-### Adding New Models
-
-Simply select "OpenRouter" and paste any model ID from [openrouter.ai/models](https://openrouter.ai/models). No code changes needed!
-
-### Customizing Prompts
-
-Edit `constants.ts` to modify placeholder prompts or `index.tsx` to adjust AI generation prompts.
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## 📄 License
 
@@ -159,18 +136,5 @@ Apache 2.0
 
 ## 🙏 Credits
 
-Original concept by ammaar@google.com
-
-Enhanced with:
-- Multi-model support
-- Full homepage generation
-- OpenRouter integration
-- Model benchmarking capabilities
-
-## 🐛 Issues & Contributions
-
-Found a bug or want to contribute? Open an issue or PR!
-
----
-
-**Built with ❤️ using AI-powered design generation**
+Original concept by [ammaar](https://x.com/ammaar).
+Refactored and enhanced by [mushfiqk47](https://github.com/mushfiqk47).
