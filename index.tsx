@@ -10,18 +10,22 @@ import { GoogleGenAI } from '@google/genai';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 
-import { Artifact, Session, ComponentVariation, LayoutOption, Skill } from './types';
+import { Artifact, Session, ComponentVariation, LayoutOption, Skill, LLMProviderId, LLM_PROVIDERS } from './types';
 import { INITIAL_PLACEHOLDERS } from './constants';
 import { generateId, extractBase64, parseJsonStream, sanitizeFilename } from './utils';
 
 import DottedGlowBackground from './components/DottedGlowBackground';
-import ArtifactCard from './components/ArtifactCard';
+import AppStage from './components/AppStage';
 import SideDrawer from './components/SideDrawer';
 import PromptInput from './components/PromptInput';
 import ActionBar from './components/ActionBar';
 import ThemeToggle from './components/ThemeToggle';
 import SkillsManager from './components/SkillsManager';
 import { ToastContainer, useToast } from './components/Toast';
+import ModelToggleButton from './components/ModelToggleButton';
+import SkillsToggleButton from './components/SkillsToggleButton';
+import VariantCountButton from './components/VariantCountButton';
+import DrawerContentRenderer from './components/DrawerContentRenderer';
 
 import { 
     ThinkingIcon, 
@@ -89,14 +93,7 @@ function useUndoableState<T>(initialState: T) {
     };
 }
 
-type LLMProviderId = 'gemini-flash' | 'gemini-pro' | 'ollama' | 'lm-studio';
 
-const LLM_PROVIDERS: { id: LLMProviderId; label: string; icon: string }[] = [
-    { id: 'gemini-flash', label: 'Flash', icon: 'zap' },
-    { id: 'gemini-pro', label: 'Pro', icon: 'diamond' },
-    { id: 'ollama', label: 'Ollama', icon: 'brain' },
-    { id: 'lm-studio', label: 'LM Studio', icon: 'brain' },
-];
 
 function getDefaultProvider(): LLMProviderId {
     const fromEnv = (process.env.VITE_LLM_PROVIDER || 'gemini') as string;
@@ -125,9 +122,10 @@ async function* streamOllama(prompt: string, systemPrompt?: string) {
     if (!reader) throw new Error("No reader found on response body");
     const decoder = new TextDecoder();
     let buffer = '';
-    while (true) {
+
+    async function* read(): AsyncGenerator<{ text: string }> {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) return;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
@@ -138,7 +136,9 @@ async function* streamOllama(prompt: string, systemPrompt?: string) {
                 if (json.response) yield { text: json.response };
             } catch (e) {}
         }
+        yield* read();
     }
+    yield* read();
 }
 
 async function streamGemini(prompt: string, model: string, systemPrompt?: string, image?: string) {
@@ -173,9 +173,10 @@ async function* streamLMStudio(prompt: string, systemPrompt?: string) {
     if (!reader) throw new Error("No reader found on response body");
     const decoder = new TextDecoder();
     let buffer = '';
-    while (true) {
+
+    async function* read(): AsyncGenerator<{ text: string }> {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) return;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
@@ -183,14 +184,16 @@ async function* streamLMStudio(prompt: string, systemPrompt?: string) {
             const trimmed = line.trim();
             if (!trimmed || !trimmed.startsWith('data: ')) continue;
             const data = trimmed.slice(6);
-            if (data === '[DONE]') break;
+            if (data === '[DONE]') return;
             try {
                 const json = JSON.parse(data);
                 const content = json.choices?.[0]?.delta?.content || '';
                 if (content) yield { text: content };
             } catch (e) {}
         }
+        yield* read();
     }
+    yield* read();
 }
 
 async function getOllama(prompt: string, systemPrompt?: string) {
@@ -241,20 +244,68 @@ async function getLMStudio(prompt: string, systemPrompt?: string) {
 }
 
 function App() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-      return (localStorage.getItem('flash-ui-theme') as 'dark' | 'light') || 'dark';
-  });
-  const [activeProvider, setActiveProvider] = useState<LLMProviderId>(() => {
-      const saved = localStorage.getItem('flash-ui-provider') as LLMProviderId | null;
-      if (saved && LLM_PROVIDERS.some(p => p.id === saved)) return saved;
-      return getDefaultProvider();
-  });
   const { toasts, addToast, dismissToast } = useToast();
-  const [variantCount, setVariantCount] = useState<number>(3);
+  
+  // Group settings state to satisfy "Many related useState calls" warning
+  const [settings, setSettingsState] = useState({
+      theme: ((localStorage.getItem('flash-ui-theme') as 'dark' | 'light') || 'dark'),
+      activeProvider: (() => {
+          const saved = localStorage.getItem('flash-ui-provider') as LLMProviderId | null;
+          if (saved && LLM_PROVIDERS.some(p => p.id === saved)) return saved;
+          return getDefaultProvider();
+      })(),
+      variantCount: 3,
+  });
 
-  const cycleVariantCount = () => {
+  const { theme, activeProvider, variantCount } = settings;
+
+  const setTheme = useCallback((val: 'dark' | 'light' | ((prev: 'dark' | 'light') => 'dark' | 'light')) => {
+      setSettingsState(prev => {
+          const newTheme = typeof val === 'function' ? val(prev.theme) : val;
+          localStorage.setItem('flash-ui-theme', newTheme);
+          return { ...prev, theme: newTheme };
+      });
+  }, []);
+
+  const setActiveProvider = useCallback((val: LLMProviderId | ((prev: LLMProviderId) => LLMProviderId)) => {
+      setSettingsState(prev => {
+          const newProvider = typeof val === 'function' ? val(prev.activeProvider) : val;
+          localStorage.setItem('flash-ui-provider', newProvider);
+          return { ...prev, activeProvider: newProvider };
+      });
+  }, []);
+
+  const setVariantCount = useCallback((val: number | ((prev: number) => number)) => {
+      setSettingsState(prev => {
+          const newCount = typeof val === 'function' ? val(prev.variantCount) : val;
+          return { ...prev, variantCount: newCount };
+      });
+  }, []);
+
+  const [skills, setSkills] = useState<Skill[]>(() => {
+      try {
+          const saved = localStorage.getItem('flash-ui-skills:v1') || localStorage.getItem('flash-ui-skills');
+          if (saved) return JSON.parse(saved);
+      } catch(e) {}
+      return [];
+  });
+
+  useEffect(() => {
+      localStorage.setItem('flash-ui-skills:v1', JSON.stringify(skills));
+  }, [skills]);
+
+  const activeSkillsContext = skills.reduce((acc, s) => {
+      if (s.isActive) {
+          const chunk = `[Skill: ${s.name}]\n${s.description}`;
+          return acc ? `${acc}\n\n${chunk}` : chunk;
+      }
+      return acc;
+  }, '');
+  const systemPrompt = buildSystemPrompt(activeSkillsContext);
+
+  const cycleVariantCount = useCallback(() => {
       setVariantCount(prev => prev >= 3 ? 1 : prev + 1);
-  };
+  }, [setVariantCount]);
 
   const getResponseStream = useCallback(async (prompt: string, image?: string) => {
     if (activeProvider === 'ollama') return streamOllama(prompt, systemPrompt);
@@ -283,77 +334,153 @@ function App() {
       canRedo 
   } = useUndoableState<Session[]>([]);
 
-  const [currentSessionIndex, setCurrentSessionIndex] = useState<number>(-1);
-  const [focusedArtifactIndex, setFocusedArtifactIndex] = useState<number | null>(null);
-  
-  const [inputValue, setInputValue] = useState<string>('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const [placeholders, setPlaceholders] = useState<string[]>(INITIAL_PLACEHOLDERS);
-  
-  const [drawerState, setDrawerState] = useState<{
-      isOpen: boolean;
-      mode: 'code' | 'variations' | 'full-page' | 'history' | 'skills' | null;
-      title: string;
-      data: any; 
-  }>({ isOpen: false, mode: null, title: '', data: null });
-
-  const [skills, setSkills] = useState<Skill[]>(() => {
-      try {
-          const saved = localStorage.getItem('flash-ui-skills');
-          if (saved) return JSON.parse(saved);
-      } catch(e) {}
-      return [];
+  // Group editor/UI states to satisfy "Many related useState calls" warning
+  const [editorState, setEditorState] = useState({
+      currentSessionIndex: -1,
+      focusedArtifactIndex: null as number | null,
+      inputValue: '',
+      selectedImage: null as string | null,
+      isLoading: false,
+      placeholderIndex: 0,
+      placeholders: INITIAL_PLACEHOLDERS,
+      drawerState: {
+          isOpen: false,
+          mode: null as 'code' | 'variations' | 'full-page' | 'history' | 'skills' | null,
+          title: '',
+          data: null as any,
+      },
+      componentVariations: [] as ComponentVariation[],
+      isImproving: false,
+      fullPageInputValue: '',
+      isFullPageImproving: false,
   });
 
-  useEffect(() => {
-      localStorage.setItem('flash-ui-skills', JSON.stringify(skills));
-  }, [skills]);
+  const {
+      currentSessionIndex,
+      focusedArtifactIndex,
+      inputValue,
+      selectedImage,
+      isLoading,
+      placeholderIndex,
+      placeholders,
+      drawerState,
+      componentVariations,
+      isImproving,
+      fullPageInputValue,
+      isFullPageImproving
+  } = editorState;
 
-  const activeSkillsContext = skills.filter(s => s.isActive).map(s => `[Skill: ${s.name}]\n${s.description}`).join('\n\n');
-  const systemPrompt = buildSystemPrompt(activeSkillsContext);
+  const setCurrentSessionIndex = useCallback((val: number | ((prev: number) => number)) => {
+      setEditorState(prev => ({
+          ...prev,
+          currentSessionIndex: typeof val === 'function' ? val(prev.currentSessionIndex) : val
+      }));
+  }, []);
 
-  const [componentVariations, setComponentVariations] = useState<ComponentVariation[]>([]);
-  const [isImproving, setIsImproving] = useState<boolean>(false);
+  const setFocusedArtifactIndex = useCallback((val: number | null | ((prev: number | null) => number | null)) => {
+      setEditorState(prev => ({
+          ...prev,
+          focusedArtifactIndex: typeof val === 'function' ? val(prev.focusedArtifactIndex) : val
+      }));
+  }, []);
 
-  // --- Full Page Improvement State ---
-  const [fullPageInputValue, setFullPageInputValue] = useState('');
-  const [isFullPageImproving, setIsFullPageImproving] = useState(false);
+  const setInputValue = useCallback((val: string | ((prev: string) => string)) => {
+      setEditorState(prev => ({
+          ...prev,
+          inputValue: typeof val === 'function' ? val(prev.inputValue) : val
+      }));
+  }, []);
+
+  const setSelectedImage = useCallback((val: string | null | ((prev: string | null) => string | null)) => {
+      setEditorState(prev => ({
+          ...prev,
+          selectedImage: typeof val === 'function' ? val(prev.selectedImage) : val
+      }));
+  }, []);
+
+  const setIsLoading = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+      setEditorState(prev => ({
+          ...prev,
+          isLoading: typeof val === 'function' ? val(prev.isLoading) : val
+      }));
+  }, []);
+
+  const setPlaceholderIndex = useCallback((val: number | ((prev: number) => number)) => {
+      setEditorState(prev => ({
+          ...prev,
+          placeholderIndex: typeof val === 'function' ? val(prev.placeholderIndex) : val
+      }));
+  }, []);
+
+  const setPlaceholders = useCallback((val: string[] | ((prev: string[]) => string[])) => {
+      setEditorState(prev => ({
+          ...prev,
+          placeholders: typeof val === 'function' ? val(prev.placeholders) : val
+      }));
+  }, []);
+
+  const setDrawerState = useCallback((val: any | ((prev: any) => any)) => {
+      setEditorState(prev => ({
+          ...prev,
+          drawerState: typeof val === 'function' ? val(prev.drawerState) : val
+      }));
+  }, []);
+
+  const setComponentVariations = useCallback((val: ComponentVariation[] | ((prev: ComponentVariation[]) => ComponentVariation[])) => {
+      setEditorState(prev => ({
+          ...prev,
+          componentVariations: typeof val === 'function' ? val(prev.componentVariations) : val
+      }));
+  }, []);
+
+  const setIsImproving = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+      setEditorState(prev => ({
+          ...prev,
+          isImproving: typeof val === 'function' ? val(prev.isImproving) : val
+      }));
+  }, []);
+
+  const setFullPageInputValue = useCallback((val: string | ((prev: string) => string)) => {
+      setEditorState(prev => ({
+          ...prev,
+          fullPageInputValue: typeof val === 'function' ? val(prev.fullPageInputValue) : val
+      }));
+  }, []);
+
+  const setIsFullPageImproving = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+      setEditorState(prev => ({
+          ...prev,
+          isFullPageImproving: typeof val === 'function' ? val(prev.isFullPageImproving) : val
+      }));
+  }, []);
 
   const gridScrollRef = useRef<HTMLDivElement>(null);
+
+  const setFocusedIndexWithScroll = useCallback((index: number | null) => {
+      setFocusedArtifactIndex(index);
+      if (index !== null && window.innerWidth <= 1024) {
+          if (gridScrollRef.current) {
+              gridScrollRef.current.scrollTop = 0;
+          }
+          window.scrollTo(0, 0);
+      }
+  }, [setFocusedArtifactIndex]);
 
   // Update theme on document
   useEffect(() => {
       document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-      setTheme(prev => {
-          const next = prev === 'dark' ? 'light' : 'dark';
-          localStorage.setItem('flash-ui-theme', next);
-          return next;
-      });
-  };
+  const toggleTheme = useCallback(() => {
+      setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+  }, [setTheme]);
 
-  const toggleModel = () => {
+  const toggleModel = useCallback(() => {
       setActiveProvider(prev => {
           const idx = LLM_PROVIDERS.findIndex(p => p.id === prev);
-          const next = LLM_PROVIDERS[(idx + 1) % LLM_PROVIDERS.length].id;
-          localStorage.setItem('flash-ui-provider', next);
-          return next;
+          return LLM_PROVIDERS[(idx + 1) % LLM_PROVIDERS.length].id;
       });
-  };
-
-  // Fix for mobile: reset scroll when focusing an item to prevent "overscroll" state
-  useEffect(() => {
-    if (focusedArtifactIndex !== null && window.innerWidth <= 1024) {
-        if (gridScrollRef.current) {
-            gridScrollRef.current.scrollTop = 0;
-        }
-        window.scrollTo(0, 0);
-    }
-  }, [focusedArtifactIndex]);
+  }, [setActiveProvider]);
 
   // Cycle placeholders
   useEffect(() => {
@@ -361,7 +488,7 @@ function App() {
           setPlaceholderIndex(prev => (prev + 1) % placeholders.length);
       }, 3000);
       return () => clearInterval(interval);
-  }, [placeholders.length]);
+  }, [placeholders.length, setPlaceholderIndex]);
 
   // Dynamic placeholder generation on load
   useEffect(() => {
@@ -392,8 +519,9 @@ function App() {
               console.warn("Silently failed to fetch dynamic placeholders", e);
           }
       };
-      setTimeout(fetchDynamicPlaceholders, 1000);
-  }, []);
+      const timer = setTimeout(fetchDynamicPlaceholders, 1000);
+      return () => clearTimeout(timer);
+  }, [setPlaceholders]);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -438,12 +566,12 @@ function App() {
       if (focusedArtifactIndex === null) return;
       setIsImproving(true);
       setInputValue('');
-  }, [focusedArtifactIndex]);
+  }, [focusedArtifactIndex, setIsImproving, setInputValue]);
 
   const handleCancelImprove = useCallback(() => {
       setIsImproving(false);
       setInputValue('');
-  }, []);
+  }, [setIsImproving, setInputValue]);
 
   const handleGenerateVariations = useCallback(async () => {
     const currentSession = sessions[currentSessionIndex];
@@ -474,7 +602,8 @@ Instead, describe the *Physicality* and *Material Logic* of the UI.
 For EACH variation:
 - Invent a unique design persona name based on a NEW physical metaphor.
 - Rewrite the prompt to fully adopt that metaphor's visual language.
-- Generate high-fidelity HTML/CSS.
+- Generate high-fidelity interactive HTML/CSS. Use HSL colors, Google Fonts, and Lucide icons.
+- Center the component layout beautifully inside the body.
 
 Required JSON Output Format (stream ONE object per line):
 \`{ "name": "Persona Name", "html": "..." }\`
@@ -493,7 +622,7 @@ Required JSON Output Format (stream ONE object per line):
     } finally {
         setIsLoading(false);
     }
-  }, [sessions, currentSessionIndex, focusedArtifactIndex, getResponseStream, variantCount]);
+  }, [sessions, currentSessionIndex, focusedArtifactIndex, getResponseStream, variantCount, addToast, setIsLoading, setComponentVariations, setDrawerState, setFullPageInputValue, setIsFullPageImproving]);
 
   const handleGenerateFullPage = useCallback(async () => {
     const currentSession = sessions[currentSessionIndex];
@@ -509,7 +638,7 @@ Required JSON Output Format (stream ONE object per line):
 
     try {
         const prompt = `
-Take a specific UI component and expand it into a COMPLETE, SCROLLABLE HOMEPAGE.
+Take a specific UI component and expand it into a COMPLETE, SCROLLABLE, INTERACTIVE HOMEPAGE.
 
 **User Prompt:** "${currentSession.prompt}"
 **Style Name:** "${currentArtifact.styleName}"
@@ -517,11 +646,15 @@ Take a specific UI component and expand it into a COMPLETE, SCROLLABLE HOMEPAGE.
 ${currentArtifact.html}
 
 **INSTRUCTIONS:**
-1. **Analyze the Reference:** Extract the color palette, typography, border-radius, shadows, and "physical" metaphor (e.g. glassmorphism, brutalism, paper) from the Reference HTML.
-2. **Build a Landing Page:** Create a comprehensive homepage (Hero, Features, Testimonials, Footer) that perfectly matches this aesthetic.
-3. **Responsive:** Ensure it works on mobile and desktop.
-4. **Hero Section:** Use the Reference Component HTML as the centerpiece or main visual in the Hero section, but feel free to enhance its layout.
-5. **Content:** Write catchy, professional copy relevant to the User Prompt.
+1. **Analyze the Reference:** Extract the color palette, typography, border-radius, shadows, gradients, and visual metaphors from the Reference HTML and scale them across a full page.
+2. **Build a Premium Landing Page:** Create a comprehensive homepage (Hero, Features/Services, Testimonials, Interactive pricing/sign-up, Footer) that perfectly matches this aesthetic.
+3. **Responsive & Viewport Fit**: Ensure it works flawlessly on mobile, tablet, and desktop devices.
+4. **Hero Section:** Use the Reference Component HTML as the centerpiece or main visual in the Hero section.
+5. **Assets & Icons**: Load Google Fonts (e.g. Outfit, Inter, Syne) and Lucide Icons via CDN:
+   <script src="https://unpkg.com/lucide@latest"></script>
+   Followed by <script>lucide.createIcons();</script> at the bottom of the page.
+6. **Interactivity**: Add smooth scrolling, hover animations, and small JavaScript event listeners for interactive buttons/menus.
+7. **Content:** Write realistic, polished copy and mock data relevant to the User Prompt.
 
 **OUTPUT:**
 Return ONLY raw, valid HTML (with embedded CSS in <style> tags). 
@@ -561,7 +694,7 @@ Do NOT wrap in markdown code blocks.
     } finally {
         setIsLoading(false);
     }
-  }, [sessions, currentSessionIndex, focusedArtifactIndex, getResponseStream]);
+  }, [sessions, currentSessionIndex, focusedArtifactIndex, getResponseStream, addToast, setIsLoading, setDrawerState, setFullPageInputValue, setIsFullPageImproving]);
 
   const handleImproveFullPage = useCallback(async () => {
     const currentHtml = drawerState.data;
@@ -617,7 +750,7 @@ ${currentHtml}
     } finally {
         setIsLoading(false);
     }
-  }, [drawerState.data, fullPageInputValue, getResponseStream]);
+  }, [drawerState.data, fullPageInputValue, getResponseStream, addToast, setIsLoading, setFullPageInputValue, setDrawerState]);
 
   const handleDownload = useCallback(async (contentToDownload?: string, filenamePrefix?: string) => {
     let htmlContent = contentToDownload;
@@ -657,7 +790,7 @@ ${currentHtml}
     }
   }, [sessions, currentSessionIndex, focusedArtifactIndex, addToast]);
 
-  const applyVariation = (html: string) => {
+  const applyVariation = useCallback((html: string) => {
       if (focusedArtifactIndex === null) return;
       setSessions(prev => prev.map((sess, i) => 
           i === currentSessionIndex ? {
@@ -669,46 +802,53 @@ ${currentHtml}
       ), true);
       setDrawerState(s => ({ ...s, isOpen: false }));
       addToast('Variation applied', 'success');
-  };
+  }, [currentSessionIndex, focusedArtifactIndex, setSessions, setDrawerState, addToast]);
 
-  const handleShowCode = () => {
+  const handleShowCode = useCallback(() => {
       const currentSession = sessions[currentSessionIndex];
       if (currentSession && focusedArtifactIndex !== null) {
           const artifact = currentSession.artifacts[focusedArtifactIndex];
           setDrawerState({ isOpen: true, mode: 'code', title: 'Source Code', data: artifact.html });
       }
-  };
+  }, [sessions, currentSessionIndex, focusedArtifactIndex, setDrawerState]);
 
-  const handleShowHistory = () => {
+  const handleShowHistory = useCallback(() => {
       setDrawerState({ isOpen: true, mode: 'history', title: 'History', data: null });
-  };
+  }, [setDrawerState]);
 
-  const handleRestoreSession = (index: number) => {
+  const handleShowSkills = useCallback(() => {
+      setDrawerState({ isOpen: true, mode: 'skills', title: 'Skills Management', data: null });
+  }, [setDrawerState]);
+
+  const handleRestoreSession = useCallback((index: number) => {
       setCurrentSessionIndex(index);
-      setFocusedArtifactIndex(null);
+      setFocusedIndexWithScroll(null);
       setDrawerState(s => ({ ...s, isOpen: false }));
-  };
+  }, [setCurrentSessionIndex, setFocusedIndexWithScroll, setDrawerState]);
 
-  const handleDeleteSession = (index: number, e: React.MouseEvent) => {
+  const handleDeleteSession = useCallback((index: number, e: React.MouseEvent) => {
       e.stopPropagation();
       setSessions(prev => {
           const newSessions = prev.filter((_, i) => i !== index);
           return newSessions;
       }, true); 
       
-      if (index === currentSessionIndex) {
-          setCurrentSessionIndex(Math.max(0, index - 1));
-      } else if (index < currentSessionIndex) {
-          setCurrentSessionIndex(currentSessionIndex - 1);
-      }
-  };
+      setCurrentSessionIndex(prev => {
+          if (index === prev) {
+              return Math.max(0, index - 1);
+          } else if (index < prev) {
+              return prev - 1;
+          }
+          return prev;
+      });
+  }, [setSessions, setCurrentSessionIndex]);
 
-  const handleClearHistory = () => {
+  const handleClearHistory = useCallback(() => {
       if (window.confirm("Are you sure you want to clear all history?")) {
           setSessions([], true);
           setCurrentSessionIndex(-1);
       }
-  };
+  }, [setSessions, setCurrentSessionIndex]);
 
   const handleSendMessage = useCallback(async (manualPrompt?: string) => {
     const promptToUse = manualPrompt || inputValue;
@@ -812,7 +952,7 @@ ${artifactToImprove.html}
     // Add new session to history stack
     setSessions(prev => [...prev, newSession], true);
     setCurrentSessionIndex(sessions.length); 
-    setFocusedArtifactIndex(null); 
+    setFocusedIndexWithScroll(null); 
     
     const generationImage = selectedImage;
     if (!manualPrompt) setSelectedImage(null);
@@ -820,7 +960,7 @@ ${artifactToImprove.html}
     try {
         const stylePrompt = `
 Generate ${variantCount} distinct, highly evocative design directions for: "${displayPrompt}".
-Return ONLY a raw JSON array of ${variantCount} *NEW*, creative names (e.g. ["Tactile Risograph Press"]).
+Return ONLY a raw JSON array of ${variantCount} *NEW*, creative design style names (e.g. ["Neon Glassmorphism", "Monochrome Cyberpunk", "Tactile Risograph Press"]).
         `.trim();
 
         const styleResponse = await getResponse(stylePrompt, generationImage);
@@ -862,16 +1002,20 @@ Return ONLY a raw JSON array of ${variantCount} *NEW*, creative names (e.g. ["Ta
         const generateArtifact = async (artifact: Artifact, styleInstruction: string) => {
             try {
                 const prompt = `
-Create a stunning, high-fidelity UI component for: "${displayPrompt}".
+Create a stunning, high-fidelity, interactive UI component for: "${displayPrompt}".
 
 **CONCEPTUAL DIRECTION: ${styleInstruction}**
 
 **VISUAL EXECUTION RULES:**
-1. **Materiality**: Use the specified metaphor to drive every CSS choice. (e.g. if Risograph, use \`feTurbulence\` for grain and \`mix-blend-mode: multiply\` for ink layering).
-2. **Typography**: Use high-quality web fonts. Pair a bold sans-serif with a refined monospace for data.
-3. **Motion**: Include subtle, high-performance CSS/JS animations (hover transitions, entry reveals).
-4. **IP SAFEGUARD**: No artist names or trademarks. 
-5. **Layout**: Be bold with negative space and hierarchy. Avoid generic cards.
+1. **Materiality & Colors**: Use the specified metaphor to drive every CSS choice. Pair a bold monochromatic background (e.g. obsidian, off-white, or dark navy) with a single vibrant accent color using custom HSL values. Use smooth gradients, glassmorphism, blur backdrops, and deep shadows where appropriate.
+2. **Typography**: Load modern web fonts from Google Fonts (e.g. Outfit, Inter, Syne, JetBrains Mono) via HTML <link> tags.
+3. **Icons**: Use beautiful vector icons by loading Lucide Icons from the CDN:
+   <script src="https://unpkg.com/lucide@latest"></script>
+   Followed by <script>lucide.createIcons();</script> at the bottom of the page to parse all <i data-lucide="..."> elements.
+4. **Motion & micro-animations**: Include CSS keyframe entry reveals, hover zoom/slide transitions, and smooth active transitions.
+5. **Layout & Responsiveness**: Build a clean, responsive layout. Center the component beautifully inside a full-height body flex/grid container, with a body background color matching the theme of the component (e.g. dark or light).
+6. **Interactivity**: Include a small, simple <script> block containing vanilla JavaScript event listeners to make accordion panels, tabs, dropdowns, and button clicks actually work (show/hide or update active states) in the preview iframe.
+7. **IP SAFEGUARD**: No artist names or trademarks.
 
 Return ONLY RAW HTML. No markdown fences.
           `.trim();
@@ -931,7 +1075,7 @@ Return ONLY RAW HTML. No markdown fences.
     } finally {
         setIsLoading(false);
     }
-  }, [inputValue, selectedImage, isLoading, sessions.length, setSessions, getResponseStream, getResponse, isImproving, currentSessionIndex, focusedArtifactIndex, sessions, variantCount]);
+  }, [inputValue, selectedImage, isLoading, sessions.length, setSessions, getResponseStream, getResponse, isImproving, currentSessionIndex, focusedArtifactIndex, sessions, variantCount, addToast, setIsLoading, setInputValue, setIsImproving, setSelectedImage, setCurrentSessionIndex, setFocusedIndexWithScroll]);
 
   const handleSurpriseMe = () => {
       const currentPrompt = placeholders[placeholderIndex];
@@ -941,19 +1085,25 @@ Return ONLY RAW HTML. No markdown fences.
 
   const nextItem = useCallback(() => {
       if (focusedArtifactIndex !== null) {
-          if (focusedArtifactIndex < 2) setFocusedArtifactIndex(focusedArtifactIndex + 1);
+          if (focusedArtifactIndex < 2) setFocusedIndexWithScroll(focusedArtifactIndex + 1);
       } else {
-          if (currentSessionIndex < sessions.length - 1) setCurrentSessionIndex(currentSessionIndex + 1);
+          setCurrentSessionIndex(prev => {
+              if (prev < sessions.length - 1) return prev + 1;
+              return prev;
+          });
       }
-  }, [currentSessionIndex, sessions.length, focusedArtifactIndex]);
+  }, [sessions.length, focusedArtifactIndex, setFocusedIndexWithScroll, setCurrentSessionIndex]);
 
   const prevItem = useCallback(() => {
       if (focusedArtifactIndex !== null) {
-          if (focusedArtifactIndex > 0) setFocusedArtifactIndex(focusedArtifactIndex - 1);
+          if (focusedArtifactIndex > 0) setFocusedIndexWithScroll(focusedArtifactIndex - 1);
       } else {
-           if (currentSessionIndex > 0) setCurrentSessionIndex(currentSessionIndex - 1);
+           setCurrentSessionIndex(prev => {
+               if (prev > 0) return prev - 1;
+               return prev;
+           });
       }
-  }, [currentSessionIndex, focusedArtifactIndex]);
+  }, [focusedArtifactIndex, setFocusedIndexWithScroll, setCurrentSessionIndex]);
 
   const isLoadingDrawer = isLoading && (
       (drawerState.mode === 'variations' && componentVariations.length === 0) ||
@@ -980,6 +1130,7 @@ Return ONLY RAW HTML. No markdown fences.
   const fullPageDownloadAction = drawerState.mode === 'full-page' && drawerState.data ? (
       <div style={{ display: 'flex', gap: '8px' }}>
           <button 
+              type="button"
               onClick={() => setIsFullPageImproving(!isFullPageImproving)} 
               className="close-button"
               title="Improve this page"
@@ -988,6 +1139,7 @@ Return ONLY RAW HTML. No markdown fences.
               <MagicWandIcon /> <span style={{marginLeft: '6px'}}>Improve</span>
           </button>
           <button 
+              type="button"
               onClick={() => handleDownload(drawerState.data, 'flash-ui-homepage')} 
               className="close-button"
               title="Download Homepage HTML"
@@ -997,38 +1149,15 @@ Return ONLY RAW HTML. No markdown fences.
           </button>
       </div>
   ) : null;
-
-  return (
+return (
     <>
         <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
 
-        <button 
-            className="model-toggle" 
-            onClick={toggleModel} 
-            title={`Switch to ${LLM_PROVIDERS[(LLM_PROVIDERS.findIndex(p => p.id === activeProvider) + 1) % LLM_PROVIDERS.length].label}`}
-            aria-label={`Current provider: ${activeProvider}`}
-        >
-            {activeProvider === 'ollama' || activeProvider === 'lm-studio' ? <BrainIcon /> : (activeProvider === 'gemini-flash' ? <ZapIcon /> : <DiamondIcon />)}
-            <span>{LLM_PROVIDERS.find(p => p.id === activeProvider)?.label || activeProvider}</span>
-        </button>
+        <ModelToggleButton activeProvider={activeProvider} toggleModel={toggleModel} />
 
-        <button 
-            className="skills-toggle" 
-            onClick={() => setDrawerState({ isOpen: true, mode: 'skills', title: 'Skills Management', data: null })} 
-            title="Manage AI Skills"
-        >
-            <BrainIcon />
-            <span>Skills</span>
-        </button>
+        <SkillsToggleButton onClick={() => setDrawerState({ isOpen: true, mode: 'skills', title: 'Skills Management', data: null })} />
 
-        <button
-            className="variant-toggle"
-            onClick={cycleVariantCount}
-            title={`Generate ${variantCount} variant${variantCount > 1 ? 's' : ''}`}
-            aria-label={`Generate ${variantCount} variant${variantCount > 1 ? 's' : ''}`}
-        >
-            <span>{variantCount}x</span>
-        </button>
+        <VariantCountButton variantCount={variantCount} onClick={cycleVariantCount} />
 
         <a href="https://x.com/ammaar" target="_blank" rel="noreferrer" className={`creator-credit ${hasStarted ? 'hide-on-mobile' : ''}`}>
             created by @ammaar
@@ -1041,91 +1170,26 @@ Return ONLY RAW HTML. No markdown fences.
             className={drawerState.mode === 'full-page' ? 'wide' : ''}
             action={fullPageDownloadAction}
         >
-            {isLoadingDrawer && (
-                 <div className="loading-state">
-                     <ThinkingIcon /> 
-                     {drawerState.mode === 'full-page' ? 'Building homepage...' : 'Designing variations...'}
-                 </div>
-            )}
-
-            {drawerState.mode === 'code' && (
-                <pre className="code-block"><code>{drawerState.data}</code></pre>
-            )}
-            
-            {drawerState.mode === 'variations' && (
-                <div className="sexy-grid">
-                    {componentVariations.map((v, i) => (
-                         <div key={i} className="sexy-card" onClick={() => applyVariation(v.html)}>
-                             <div className="sexy-preview">
-                                 <iframe srcDoc={v.html} title={v.name} sandbox="allow-scripts allow-same-origin" />
-                             </div>
-                             <div className="sexy-label">{v.name}</div>
-                         </div>
-                    ))}
-                </div>
-            )}
-
-            {drawerState.mode === 'history' && (
-                <div className="history-list">
-                    {sessions.length === 0 && (
-                        <div style={{textAlign:'center', color: '#666', marginTop: '20px'}}>No history yet.</div>
-                    )}
-                    {sessions.slice().reverse().map((session, i) => {
-                         // Because we reversed, calculate original index
-                         const originalIndex = sessions.length - 1 - i;
-                         return (
-                             <div key={session.id} className={`history-item ${originalIndex === currentSessionIndex ? 'active' : ''}`} onClick={() => handleRestoreSession(originalIndex)}>
-                                 <div className="history-info">
-                                     <div className="history-prompt">{session.prompt}</div>
-                                     <div className="history-meta">{new Date(session.timestamp).toLocaleTimeString()}</div>
-                                 </div>
-                                 <div className="history-actions">
-                                     <button onClick={(e) => handleDeleteSession(originalIndex, e)} title="Delete session">
-                                         <TrashIcon />
-                                     </button>
-                                 </div>
-                             </div>
-                         );
-                    })}
-                    {sessions.length > 0 && (
-                        <button className="clear-history-btn" onClick={handleClearHistory}>
-                            Clear All History
-                        </button>
-                    )}
-                </div>
-            )}
-
-            {drawerState.mode === 'skills' && (
-                <SkillsManager skills={skills} onUpdateSkills={setSkills} />
-            )}
-
-            {drawerState.mode === 'full-page' && (
-                <>
-                    {drawerState.data && (
-                        <iframe 
-                            srcDoc={drawerState.data} 
-                            title="Full Page Preview" 
-                            className="full-page-frame"
-                            sandbox="allow-scripts allow-same-origin" 
-                        />
-                    )}
-                    {isFullPageImproving && (
-                         <PromptInput 
-                             inputValue={fullPageInputValue}
-                             setInputValue={setFullPageInputValue}
-                             selectedImage={null}
-                             onImageUpload={() => {}}
-                             onRemoveImage={(e) => {e.preventDefault()}}
-                             isLoading={isLoading}
-                             currentPlaceholder="How should we improve this page?"
-                             onSendMessage={handleImproveFullPage}
-                             isImproving={true}
-                             onCancelImprove={() => setIsFullPageImproving(false)}
-                             activeSkills={skills.filter(s => s.isActive)}
-                         />
-                    )}
-                </>
-            )}
+            <DrawerContentRenderer 
+                drawerMode={drawerState.mode}
+                drawerData={drawerState.data}
+                isLoadingDrawer={isLoadingDrawer}
+                componentVariations={componentVariations}
+                sessions={sessions}
+                currentSessionIndex={currentSessionIndex}
+                skills={skills}
+                fullPageInputValue={fullPageInputValue}
+                isFullPageImproving={isFullPageImproving}
+                isLoading={isLoading}
+                applyVariation={applyVariation}
+                handleRestoreSession={handleRestoreSession}
+                handleDeleteSession={handleDeleteSession}
+                handleClearHistory={handleClearHistory}
+                setSkills={setSkills}
+                setFullPageInputValue={setFullPageInputValue}
+                setIsFullPageImproving={setIsFullPageImproving}
+                handleImproveFullPage={handleImproveFullPage}
+            />
         </SideDrawer>
 
         <div className="immersive-app">
@@ -1137,63 +1201,39 @@ Return ONLY RAW HTML. No markdown fences.
                 speedScale={0.5} 
             />
 
-            <div className={`stage-container ${focusedArtifactIndex !== null ? 'mode-focus' : 'mode-split'}`}>
-                 <div className={`empty-state ${hasStarted ? 'fade-out' : ''}`}>
-                     <div className="empty-content">
-                         <h1>Flash UI</h1>
-                         <p>Creative UI generation in a flash</p>
-                         <button className="surprise-button" onClick={handleSurpriseMe} disabled={isLoading}>
-                             <SparklesIcon /> Surprise Me
-                         </button>
-                     </div>
-                 </div>
+            <AppStage 
+                hasStarted={hasStarted}
+                sessions={sessions}
+                currentSessionIndex={currentSessionIndex}
+                focusedArtifactIndex={focusedArtifactIndex}
+                isLoading={isLoading}
+                handleSurpriseMe={handleSurpriseMe}
+                setFocusedIndexWithScroll={setFocusedIndexWithScroll}
+                gridScrollRef={gridScrollRef}
+            />
 
-                {sessions.map((session, sIndex) => {
-                    let positionClass = 'hidden';
-                    if (sIndex === currentSessionIndex) positionClass = 'active-session';
-                    else if (sIndex < currentSessionIndex) positionClass = 'past-session';
-                    else if (sIndex > currentSessionIndex) positionClass = 'future-session';
-                    
-                    return (
-                        <div key={session.id} className={`session-group ${positionClass}`}>
-                            <div className="artifact-grid" ref={sIndex === currentSessionIndex ? gridScrollRef : null}>
-                                {session.artifacts.map((artifact, aIndex) => {
-                                    const isFocused = focusedArtifactIndex === aIndex;
-                                    
-                                    return (
-                                        <ArtifactCard 
-                                            key={artifact.id}
-                                            artifact={artifact}
-                                            isFocused={isFocused}
-                                            onClick={() => setFocusedArtifactIndex(aIndex)}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-             {canGoBack && (
-                <button className="nav-handle left" onClick={prevItem} aria-label="Previous">
-                    <ArrowLeftIcon />
-                </button>
-             )}
-             {canGoForward && (
-                <button className="nav-handle right" onClick={nextItem} aria-label="Next">
-                    <ArrowRightIcon />
-                </button>
-             )}
+              {canGoBack && (
+                 <button type="button" className="nav-handle left" onClick={prevItem} aria-label="Previous">
+                     <ArrowLeftIcon />
+                 </button>
+              )}
+              {canGoForward && (
+                 <button type="button" className="nav-handle right" onClick={nextItem} aria-label="Next">
+                     <ArrowRightIcon />
+                 </button>
+              )}
 
             <ActionBar 
-                isVisible={focusedArtifactIndex !== null}
+                flags={{
+                    isVisible: focusedArtifactIndex !== null,
+                    canUndo,
+                    canRedo,
+                    isLoading
+                }}
                 currentPrompt={currentSession?.prompt}
-                canUndo={canUndo}
-                canRedo={canRedo}
                 onUndo={undo}
                 onRedo={redo}
-                onClearFocus={() => setFocusedArtifactIndex(null)}
+                onClearFocus={() => setFocusedIndexWithScroll(null)}
                 onGenerateVariations={handleGenerateVariations}
                 onGenerateFullPage={handleGenerateFullPage}
                 onDownload={() => handleDownload()}
@@ -1201,7 +1241,6 @@ Return ONLY RAW HTML. No markdown fences.
                 onShowHistory={handleShowHistory}
                 onDuplicate={handleDuplicateArtifact}
                 onImprove={handleEnterImproveMode}
-                isLoading={isLoading}
             />
 
             <PromptInput 

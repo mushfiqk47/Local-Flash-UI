@@ -10,10 +10,13 @@ import {
 } from './Icons';
 
 interface ActionBarProps {
-    isVisible: boolean;
+    flags: {
+        isVisible: boolean;
+        canUndo: boolean;
+        canRedo: boolean;
+        isLoading: boolean;
+    };
     currentPrompt?: string;
-    canUndo: boolean;
-    canRedo: boolean;
     onUndo: () => void;
     onRedo: () => void;
     onClearFocus: () => void;
@@ -24,14 +27,11 @@ interface ActionBarProps {
     onShowHistory: () => void;
     onDuplicate: () => void;
     onImprove: () => void;
-    isLoading: boolean;
 }
 
 const ActionBar: React.FC<ActionBarProps> = ({
-    isVisible,
+    flags,
     currentPrompt,
-    canUndo,
-    canRedo,
     onUndo,
     onRedo,
     onClearFocus,
@@ -41,49 +41,49 @@ const ActionBar: React.FC<ActionBarProps> = ({
     onShowCode,
     onShowHistory,
     onDuplicate,
-    onImprove,
-    isLoading
+    onImprove
 }) => {
+    const { isVisible, canUndo, canRedo, isLoading } = flags;
     return (
         <div className={`action-bar ${isVisible ? 'visible' : ''}`} role="toolbar" aria-label="Editor actions">
              <div className="active-prompt-label" title={currentPrompt}>
                 {currentPrompt}
              </div>
              <div className="action-buttons">
-                <button onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo">
+                <button type="button" onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo">
                     <UndoIcon />
                 </button>
-                <button onClick={onRedo} disabled={!canRedo} title="Redo" aria-label="Redo">
+                <button type="button" onClick={onRedo} disabled={!canRedo} title="Redo" aria-label="Redo">
                     <RedoIcon />
                 </button>
 
                 <div className="separator" aria-hidden="true" />
 
-                <button onClick={onClearFocus} aria-label="Grid View">
+                <button type="button" onClick={onClearFocus} aria-label="Grid View">
                     <GridIcon /> Grid View
                 </button>
-                <button onClick={onDuplicate} disabled={isLoading} aria-label="Duplicate Design">
+                <button type="button" onClick={onDuplicate} disabled={isLoading} aria-label="Duplicate Design">
                     <CopyIcon /> Duplicate
                 </button>
-                <button onClick={onImprove} disabled={isLoading} aria-label="Improve Design">
+                <button type="button" onClick={onImprove} disabled={isLoading} aria-label="Improve Design">
                     <MagicWandIcon /> Improve
                 </button>
-                <button onClick={onGenerateVariations} disabled={isLoading} aria-label="Generate Variations">
+                <button type="button" onClick={onGenerateVariations} disabled={isLoading} aria-label="Generate Variations">
                     <SparklesIcon /> Variations
                 </button>
-                <button onClick={onGenerateFullPage} disabled={isLoading} aria-label="Generate Full Homepage">
+                <button type="button" onClick={onGenerateFullPage} disabled={isLoading} aria-label="Generate Full Homepage">
                     <LayoutIcon /> Full Homepage
                 </button>
-                <button onClick={onDownload} disabled={isLoading} title="Download Source" aria-label="Export HTML">
+                <button type="button" onClick={onDownload} disabled={isLoading} title="Download Source" aria-label="Export HTML">
                     <DownloadIcon /> Export
                 </button>
-                <button onClick={onShowCode} aria-label="View Source Code">
+                <button type="button" onClick={onShowCode} aria-label="View Source Code">
                     <CodeIcon /> Source
                 </button>
 
                 <div className="separator" aria-hidden="true" />
 
-                <button onClick={onShowHistory} title="History" aria-label="View History">
+                <button type="button" onClick={onShowHistory} title="History" aria-label="View History">
                     <HistoryIcon />
                 </button>
              </div>

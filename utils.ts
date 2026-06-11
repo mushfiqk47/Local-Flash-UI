@@ -14,6 +14,13 @@ export const extractBase64 = (dataUrl: string) => {
 export const sanitizeFilename = (text: string) => 
     text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').substring(0, 40);
 
+function findBraceIndex(str: string, startFrom: number = 0): number {
+    for (let i = startFrom; i < str.length; i++) {
+        if (str[i] === '{') return i;
+    }
+    return -1;
+}
+
 export async function* parseJsonStream(responseStream: AsyncGenerator<{ text: string }>) {
     let buffer = '';
     for await (const chunk of responseStream) {
@@ -21,7 +28,7 @@ export async function* parseJsonStream(responseStream: AsyncGenerator<{ text: st
         if (typeof text !== 'string') continue;
         buffer += text;
         let braceCount = 0;
-        let start = buffer.indexOf('{');
+        let start = findBraceIndex(buffer);
         while (start !== -1) {
             braceCount = 0;
             let end = -1;
@@ -38,13 +45,13 @@ export async function* parseJsonStream(responseStream: AsyncGenerator<{ text: st
                 try {
                     yield JSON.parse(jsonString);
                     buffer = buffer.substring(end + 1);
-                    start = buffer.indexOf('{');
+                    start = findBraceIndex(buffer);
                 } catch (e) {
-                    start = buffer.indexOf('{', start + 1);
+                    start = findBraceIndex(buffer, start + 1);
                 }
             } else {
                 break; 
             }
         }
     }
-}
+}

@@ -13,6 +13,7 @@ interface ThemeToggleProps {
 const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, toggleTheme }) => {
     return (
         <button 
+            type="button"
             className="theme-toggle" 
             onClick={toggleTheme} 
             title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}

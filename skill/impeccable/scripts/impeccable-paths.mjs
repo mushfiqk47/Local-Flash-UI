@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const IMPECCABLE_DIR = '.impeccable';
-export const LIVE_DIR = 'live';
-export const CRITIQUE_DIR = 'critique';
+const IMPECCABLE_DIR = '.impeccable';
+const LIVE_DIR = 'live';
+const CRITIQUE_DIR = 'critique';
 
 export function getImpeccableDir(cwd = process.cwd()) {
   return path.join(cwd, IMPECCABLE_DIR);
@@ -13,7 +13,7 @@ export function getDesignSidecarPath(cwd = process.cwd()) {
   return path.join(getImpeccableDir(cwd), 'design.json');
 }
 
-export function getDesignSidecarCandidates(cwd = process.cwd(), contextDir = cwd) {
+function getDesignSidecarCandidates(cwd = process.cwd(), contextDir = cwd) {
   const candidates = [
     getDesignSidecarPath(cwd),
     path.join(cwd, 'DESIGN.json'),
@@ -27,15 +27,15 @@ export function resolveDesignSidecarPath(cwd = process.cwd(), contextDir = cwd) 
   return firstExisting(getDesignSidecarCandidates(cwd, contextDir));
 }
 
-export function getLiveDir(cwd = process.cwd()) {
+function getLiveDir(cwd = process.cwd()) {
   return path.join(getImpeccableDir(cwd), LIVE_DIR);
 }
 
-export function getLiveConfigPath(cwd = process.cwd()) {
+function getLiveConfigPath(cwd = process.cwd()) {
   return path.join(getLiveDir(cwd), 'config.json');
 }
 
-export function getLegacyLiveConfigPath(scriptsDir) {
+function getLegacyLiveConfigPath(scriptsDir) {
   return path.join(scriptsDir, 'config.json');
 }
 
@@ -53,11 +53,11 @@ export function resolveLiveConfigPath({ cwd = process.cwd(), scriptsDir, env = p
   return primary;
 }
 
-export function getLiveServerPath(cwd = process.cwd()) {
+function getLiveServerPath(cwd = process.cwd()) {
   return path.join(getLiveDir(cwd), 'server.json');
 }
 
-export function getLegacyLiveServerPath(cwd = process.cwd()) {
+function getLegacyLiveServerPath(cwd = process.cwd()) {
   return path.join(cwd, '.impeccable-live.json');
 }
 
@@ -101,7 +101,7 @@ export function getCritiqueDir(cwd = process.cwd()) {
   return path.join(getImpeccableDir(cwd), CRITIQUE_DIR);
 }
 
-export function getLegacyLiveAnnotationsDir(cwd = process.cwd()) {
+function getLegacyLiveAnnotationsDir(cwd = process.cwd()) {
   return path.join(cwd, '.impeccable-live', 'annotations');
 }
 

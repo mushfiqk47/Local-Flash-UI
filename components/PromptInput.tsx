@@ -7,6 +7,8 @@ import React, { useRef, useEffect } from 'react';
 import { ImageIcon, XIcon, ThinkingIcon, ArrowUpIcon, MagicWandIcon, ZapIcon } from './Icons';
 import { Skill } from '../types';
 
+const EMPTY_SKILLS: Skill[] = [];
+
 interface PromptInputProps {
     inputValue: string;
     setInputValue: (val: string) => void;
@@ -34,16 +36,12 @@ const PromptInput: React.FC<PromptInputProps> = ({
     onSendMessage,
     isImproving,
     onCancelImprove,
-    activeSkills = []
+    activeSkills = EMPTY_SKILLS
 }) => {
     const inputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => {
-        if (!isLoading) {
-            inputRef.current?.focus();
-        }
-    }, [isLoading, isImproving]);
+
 
     const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'Enter' && !isLoading) {
@@ -69,6 +67,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
             <div className={`input-wrapper ${isLoading ? 'loading' : ''} ${selectedImage ? 'has-image' : ''} ${isImproving ? 'improving' : ''}`}>
                 {isImproving ? (
                     <button 
+                        type="button"
                         className="upload-button"
                         onClick={onCancelImprove}
                         title="Cancel Improvement"
@@ -78,6 +77,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
                     </button>
                 ) : (
                     <button 
+                        type="button"
                         className="upload-button" 
                         onClick={() => fileInputRef.current?.click()} 
                         title="Upload Image"
@@ -95,12 +95,13 @@ const PromptInput: React.FC<PromptInputProps> = ({
                     accept="image/*" 
                     onChange={onImageUpload}
                     aria-hidden="true"
+                    tabIndex={-1}
                 />
                 
                 {selectedImage && !isImproving && (
                     <div className="image-preview-badge">
                         <img src={selectedImage} alt="Preview" />
-                        <button className="remove-image-btn" onClick={onRemoveImage} aria-label="Remove image">
+                        <button type="button" className="remove-image-btn" onClick={onRemoveImage} aria-label="Remove image">
                             <XIcon />
                         </button>
                     </div>
@@ -133,6 +134,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
                 )}
                 
                 <button 
+                    type="button"
                     className="send-button" 
                     onClick={onSendMessage} 
                     disabled={isLoading || (!inputValue.trim() && !selectedImage)}

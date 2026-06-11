@@ -722,6 +722,11 @@ html, body {
     z-index: 200; display: flex; justify-content: flex-end;
 }
 .drawer-content {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 210;
     width: 100%; max-width: 420px;
     background: var(--drawer-bg);
     backdrop-filter: blur(24px) saturate(180%);
@@ -730,7 +735,6 @@ html, body {
     display: flex; flex-direction: column;
     animation: slideInRight 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
     box-shadow: -20px 0 50px rgba(0,0,0,0.2);
-    position: relative; /* Ensure absolute children are positioned relative to this */
 }
 .drawer-content.wide {
     max-width: 90vw;
@@ -929,3 +933,79 @@ html, body {
     background: #fff;
     display: block;
 }
+
+/* Button Resets for Converted Role Divs */
+button.artifact-card,
+button.sexy-card,
+button.history-item,
+button.drawer-overlay {
+    appearance: none;
+    background: none;
+    border: none;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+}
+button.drawer-overlay {
+    background: rgba(0,0,0,0.3);
+}
+
+/* History list items and skill cards styling */
+.history-info-btn {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 0;
+    margin: 0;
+    flex: 1;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.skill-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    position: relative;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+    outline: none;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    opacity: 0.6;
+    transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.skill-card.active {
+    background: var(--surface-color-hover);
+    border: 1px solid #a855f7;
+    opacity: 1;
+}
+
+.skill-card-inner-btn {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 0;
+    margin: 0;
+    flex: 1;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+

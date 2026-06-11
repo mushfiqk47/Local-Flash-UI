@@ -27,6 +27,47 @@ export function useToast() {
     return { toasts, addToast, dismissToast };
 }
 
+const TOAST_ITEM_BASE_STYLE: React.CSSProperties = {
+    color: '#fff',
+    padding: '10px 16px',
+    borderRadius: '12px',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    backdropFilter: 'blur(8px)',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    animation: 'toastSlideIn 0.3s ease-out',
+    pointerEvents: 'auto',
+    maxWidth: '360px',
+    wordBreak: 'break-word',
+};
+
+const TOAST_BUTTON_STYLE: React.CSSProperties = {
+    background: 'none',
+    border: 'none',
+    color: '#fff',
+    cursor: 'pointer',
+    padding: '0',
+    fontSize: '1.1rem',
+    lineHeight: 1,
+    opacity: 0.7,
+};
+
+const TOAST_CONTAINER_STYLE: React.CSSProperties = {
+    position: 'fixed',
+    bottom: '100px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 300,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    pointerEvents: 'none',
+    alignItems: 'center',
+};
+
 const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void }> = ({ toast, onDismiss }) => {
     useEffect(() => {
         const timer = setTimeout(() => onDismiss(toast.id), 3500);
@@ -40,31 +81,16 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
     return (
         <div
             style={{
+                ...TOAST_ITEM_BASE_STYLE,
                 background: bgColor,
-                color: '#fff',
-                padding: '10px 16px',
-                borderRadius: '12px',
-                fontSize: '0.85rem',
-                fontWeight: 500,
-                backdropFilter: 'blur(8px)',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                animation: 'toastSlideIn 0.3s ease-out',
-                pointerEvents: 'auto',
-                maxWidth: '360px',
-                wordBreak: 'break-word',
             }}
             role="alert"
         >
             <span style={{ flex: 1 }}>{toast.text}</span>
             <button
+                type="button"
                 onClick={() => onDismiss(toast.id)}
-                style={{
-                    background: 'none', border: 'none', color: '#fff', cursor: 'pointer',
-                    padding: '0', fontSize: '1.1rem', lineHeight: 1, opacity: 0.7
-                }}
+                style={TOAST_BUTTON_STYLE}
                 aria-label="Dismiss"
             >
                 &times;
@@ -77,20 +103,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
     if (toasts.length === 0) return null;
 
     return (
-        <div
-            style={{
-                position: 'fixed',
-                bottom: '100px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 300,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                pointerEvents: 'none',
-                alignItems: 'center',
-            }}
-        >
+        <div style={TOAST_CONTAINER_STYLE}>
             {toasts.map(t => (
                 <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
             ))}

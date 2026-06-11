@@ -29,9 +29,11 @@ const ArtifactCard = React.memo(({
     const isBlurring = artifact.status === 'streaming';
 
     return (
-        <div 
+        <button 
+            type="button"
             className={`artifact-card ${isFocused ? 'focused' : ''} ${isBlurring ? 'generating' : ''}`}
             onClick={onClick}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
         >
             <div className="artifact-header">
                 <span className="artifact-style-tag">{artifact.styleName}</span>
@@ -47,11 +49,11 @@ const ArtifactCard = React.memo(({
                 <iframe 
                     srcDoc={artifact.html} 
                     title={artifact.id} 
-                    sandbox="allow-scripts allow-forms allow-modals allow-popups allow-presentation allow-same-origin"
+                    sandbox="allow-scripts allow-forms allow-modals allow-popups allow-presentation"
                     className="artifact-iframe"
                 />
             </div>
-        </div>
+        </button>
     );
 });
 

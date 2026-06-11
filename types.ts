@@ -26,3 +26,12 @@ export interface Skill {
   description: string;
   isActive: boolean;
 }
+
+export type LLMProviderId = 'gemini-flash' | 'gemini-pro' | 'ollama' | 'lm-studio';
+
+export const LLM_PROVIDERS: { id: LLMProviderId; label: string; icon: string }[] = [
+    { id: 'gemini-flash', label: 'Flash', icon: 'zap' },
+    { id: 'gemini-pro', label: 'Pro', icon: 'diamond' },
+    { id: 'ollama', label: 'Ollama', icon: 'brain' },
+    { id: 'lm-studio', label: 'LM Studio', icon: 'brain' },
+];
