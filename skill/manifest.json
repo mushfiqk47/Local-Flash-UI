@@ -1,0 +1,32 @@
+[
+  {
+    "id": "ui-ux-pro-max",
+    "name": "UI/UX Pro Max",
+    "description": "Comprehensive design guide for web and mobile applications. Contains 67 styles, 96 color palettes, 57 font pairings, 99 UX guidelines, and 25 chart types across 13 technology stacks.",
+    "isActive": false
+  },
+  {
+    "id": "frontend-design",
+    "name": "Frontend Design",
+    "description": "Guidance for distinctive, intentional visual design when building new UI or reshaping existing ones. Focuses on aesthetic direction, typography, layout, motion, and avoiding templated defaults.",
+    "isActive": false
+  },
+  {
+    "id": "ux-designer",
+    "name": "UX Designer",
+    "description": "Expert UX design assistance for user research, wireframing, prototyping, design strategy, user flows, personas, usability testing, and information architecture.",
+    "isActive": false
+  },
+  {
+    "id": "shadcn",
+    "name": "shadcn/ui",
+    "description": "Component design system based on shadcn/ui patterns. Includes Radix UI primitives, Tailwind CSS theming, accessible components, and CLI-based workflow.",
+    "isActive": false
+  },
+  {
+    "id": "impeccable",
+    "name": "Impeccable",
+    "description": "Production-grade frontend interface design. Covers color (OKLCH), typography, responsive layout, motion, accessibility, and anti-pattern detection with AI slop prevention.",
+    "isActive": false
+  }
+]
